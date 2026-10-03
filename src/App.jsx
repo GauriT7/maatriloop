@@ -117,6 +117,7 @@ function Avatar({ initials, size = "md", tone = "sage" }) {
 function App() {
   const [reasonOpen, setReasonOpen] = useState(false);
   const [selectedReason, setSelectedReason] = useState("");
+  const [messageSent, setMessageSent] = useState(false);
   
   const [demoTasks, setDemoTasks] = useState([
   {
@@ -510,8 +511,17 @@ function App() {
                   <div className="message-meta"><span>Approved template · Marathi</span><span>10:42 AM</span></div>
                   <p>“नमस्कार आशा, तुमची पुढील भेट १४ ऑक्टोबर रोजी सकाळी १० वाजता आहे.”</p>
                   <div className="message-footer">
-                    <StatusPill tone="green">Ready to send</StatusPill>
-                    <button onClick={() => notify("Demo message sent")}><Send size={14} /> Send</button>
+                    <StatusPill tone="green">
+  {messageSent ? "Sent · 10:43 AM" : "Ready to send"}
+</StatusPill>
+                    <button
+  onClick={() => {
+    setMessageSent(true);
+    notify("Demo message sent");
+  }}
+>
+  <Send size={14} /> Send
+</button>
                   </div>
                 </div>
 
@@ -521,7 +531,14 @@ function App() {
                     onChange={(e) => setComposer(e.target.value)}
                     placeholder="Write a workflow message…"
                   />
-                  <button onClick={() => { if (composer.trim()) { notify("Message queued in demo"); setComposer(""); } }}>
+                  <button 
+                    onClick={() => {
+  if (composer.trim()) {
+    setMessageSent(true);
+    notify("Message queued in demo");
+    setComposer("");
+  }
+}}
                     <Send size={16} />
                   </button>
                 </div>
