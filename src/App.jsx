@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import babyIllustration from "./baby-illustration.svg";
 import {
   Activity, ArrowRight, Baby, Bell, CalendarDays, CalendarPlus, Check, ClipboardCheck,
   Clock3, FileText, FolderOpen, Headphones, LayoutDashboard, Languages, ListChecks,
@@ -47,6 +48,18 @@ const TIMELINES = {
   "MC-1037": [["01 Oct", "ANC contact", "Completed", "done"], ["02 Oct", "Report upload", "Received", "done"], ["03 Oct", "Doctor review", "Due today", "active"], ["07 Oct", "Follow-up", "Scheduled", "pending"]],
   "MC-1029": [["20 Sep", "ANC contact", "Completed", "done"], ["01 Oct", "Follow-up", "Missed", "missed"], ["03 Oct", "Patient contact", "Frontline queue", "active"], ["05 Oct", "Reschedule", "Pending", "pending"]]
 };
+
+const BABY_SIZE = {
+  20: { cue: "About the size of a banana", length: "~25 cm", note: "Illustrative average · varies by pregnancy" },
+  28: { cue: "About the size of an aubergine", length: "~37.6 cm head-to-heel", note: "Illustrative average · not a scan measurement" },
+  34: { cue: "About the size of a cantaloupe", length: "~45 cm head-to-heel", note: "Illustrative average · not a scan measurement" }
+};
+
+function getBabySize(week) {
+  if (week <= 20) return BABY_SIZE[20];
+  if (week <= 28) return BABY_SIZE[28];
+  return BABY_SIZE[34];
+}
 
 const STATUS_TONE = { PENDING: "amber", SCHEDULED: "blue", IN_PROGRESS: "blue", COMPLETED: "green", MISSED: "rose", CANCELLED: "neutral", ESCALATED: "rose", CONFIRMED: "green", READY: "blue", SENT: "green" };
 
@@ -248,12 +261,12 @@ function App() {
             <div className="role-switcher">{Object.keys(ROLE_META).map((item) => <button key={item} className={role === item ? "selected" : ""} onClick={() => { setRole(item); setActiveNav("Overview"); addAudit(`Switched workspace to ${item}`); }}>{item}</button>)}</div>
           </section>
 
-          <section className="quick-metrics">
+          {activeNav === "Overview" && <section className="quick-metrics">
             <Metric label="Open tasks" value={String(openTasks.length).padStart(2, "0")} detail={`${dueToday.length} due today`} tone="rose" />
             <Metric label="Appointments" value={String(appointments.length).padStart(2, "0")} detail={`${appointments.filter((a) => a.status === "MISSED").length} missed`} tone="amber" />
             <Metric label="Scans / USG" value={String(scans).padStart(2, "0")} detail="shared records" tone="blue" />
             <Metric label="Documents" value={String(documents.length).padStart(2, "0")} detail="accessible to care team" tone="green" />
-          </section>
+          </section>}
 
           {activeNav === "Overview" && <Overview role={role} patients={patients} tasks={tasks} appointments={appointments} selectedPatient={selectedPatient} onSelectPatient={setSelectedPatientId} onNavigate={navigate} onCreate={() => setModal("appointment")} onVoice={() => setModal("voice")} />}
           {activeNav === "Care timeline" && <TimelinePage patient={selectedPatient} tasks={patientTasks} appointments={patientAppointments} documents={patientDocs} onSelect={setSelectedPatientId} patients={patients} />}
@@ -286,7 +299,7 @@ function Overview({ role, patients, tasks, appointments, selectedPatient, onSele
       <div className="compact-patients">{patients.map((p) => <button key={p.id} className="compact-patient" onClick={() => { onSelectPatient(p.id); onNavigate("Patients"); }}><Avatar initials={p.initials} tone={avatarTone(p.accent)} /><div><strong>{p.name}</strong><span>{p.week} weeks · {p.language}</span></div><StatusPill tone={p.accent}>{p.status}</StatusPill><ArrowRight size={15} /></button>)}</div>
     </div>
     <aside className="side-column">
-      {role === "Patient" ? <PregnancyCard patient={selectedPatient} /> : <WorkflowCard tasks={tasks} appointments={appointments} />}
+      {role === "Patient" || role === "Doctor" ? <PregnancyCard patient={selectedPatient} role={role} /> : <WorkflowCard tasks={tasks} appointments={appointments} />}
       <div className="panel action-card"><div><div className="section-kicker">QUICK ACTIONS</div><h3>Move the workflow</h3></div><div className="action-grid"><button onClick={onCreate}><CalendarPlus size={17} /> Appointment</button><button onClick={() => onNavigate("Patients")}><FolderOpen size={17} /> Patient record</button><button onClick={onVoice}><Mic size={17} /> Voice update</button><button onClick={() => onNavigate("Messages")}><MessageCircle size={17} /> Message</button></div></div>
     </aside>
   </section>;
@@ -294,7 +307,25 @@ function Overview({ role, patients, tasks, appointments, selectedPatient, onSele
 
 function WorkflowCard({ tasks, appointments }) { return <div className="panel workflow-card"><div className="panel-header"><div><div className="section-kicker">LIVE WORKFLOW</div><h3>Care-loop status</h3></div><StatusPill tone="green">Active</StatusPill></div><div className="workflow-line"><span className="done" />Task created<span className="line" /><span className={tasks.some((t) => t.status === "IN_PROGRESS") ? "active" : "done"} />Human action<span className="line" /><span className="active" />Next handoff</div><div className="workflow-mini"><div><strong>{tasks.filter((t) => t.status !== "COMPLETED").length}</strong><span>open tasks</span></div><div><strong>{appointments.filter((a) => a.status === "MISSED").length}</strong><span>missed</span></div><div><strong>{tasks.filter((t) => t.status === "COMPLETED").length}</strong><span>closed</span></div></div></div>; }
 
-function PregnancyCard({ patient }) { const pct = Math.min(100, Math.round((patient.week / 40) * 100)); return <div className="panel pregnancy-card"><div className="panel-header"><div><div className="section-kicker">PREGNANCY JOURNEY</div><h3>{patient.week} weeks</h3></div><StatusPill tone="green">Illustrative</StatusPill></div><div className="baby-stage"><div className="baby-orbit"><Baby size={42} /></div><div><strong>Baby growth view</strong><span>Illustrative visual only — not a clinical measurement.</span></div></div><div className="progress-track"><span style={{ width: `${pct}%` }} /></div><div className="progress-labels"><span>Start</span><strong>{pct}% journey</strong><span>40 weeks</span></div></div>; }
+function PregnancyCard({ patient, role = "Patient" }) {
+  const pct = Math.min(100, Math.round((patient.week / 40) * 100));
+  const size = getBabySize(patient.week);
+  return <div className="panel pregnancy-card">
+    <div className="panel-header"><div><div className="section-kicker">PREGNANCY JOURNEY</div><h3>{patient.week} weeks</h3></div><StatusPill tone="green">Illustrative</StatusPill></div>
+    <div className="baby-journey-visual">
+      <img src={babyIllustration} alt="Illustrative baby growth graphic" />
+      <div className="baby-journey-copy">
+        <span className="baby-caption">BABY GROWTH VIEW</span>
+        <strong>{role === "Doctor" ? size.length : size.cue}</strong>
+        <p>{role === "Doctor" ? "Reference size only. Clinical measurements belong in the scan record." : "A simple size cue to help you picture the stage of pregnancy."}</p>
+        <small>{size.note}</small>
+      </div>
+    </div>
+    <div className="trimester-track"><span className="trimester t1">1st</span><span className="trimester t2">2nd</span><span className="trimester t3 active">3rd</span></div>
+    <div className="progress-track"><span style={{ width: `${pct}%` }} /></div>
+    <div className="progress-labels"><span>Week 1</span><strong>Week {patient.week} of 40</strong><span>Week 40</span></div>
+  </div>;
+}
 
 function TimelinePage({ patient, tasks, appointments, documents, patients, onSelect }) { const timeline = TIMELINES[patient.id] || []; return <section className="page-stack"><PatientSwitcher patients={patients} selected={patient.id} onSelect={onSelect} /><div className="timeline-layout"><div className="panel"><div className="panel-header"><div><div className="section-kicker">CARE CLOCK</div><h2>{patient.name}'s journey</h2></div><StatusPill tone={patient.accent}>{patient.status}</StatusPill></div><div className="large-timeline">{timeline.map((item, i) => <div className="large-timeline-item" key={item[0] + item[1]}><div className={`timeline-dot ${item[3]}`} /><div className="timeline-date">{item[0]}</div><div><strong>{item[1]}</strong><span>{item[2]}</span></div>{i < timeline.length - 1 && <div className="timeline-connector" />}</div>)}</div></div><div className="side-stack"><div className="panel"><div className="section-kicker">NEXT</div><h3>{tasks[0]?.title || "Nothing requiring action"}</h3><p className="muted-copy">{tasks[0]?.detail || "The care team has no open task for this patient."}</p></div><DocumentsPanel documents={documents} /></div></div></section>; }
 
@@ -304,8 +335,26 @@ function TasksPage({ role, tasks, selectedPatient, onSelect, onReview, onRespond
 
 function PatientsPage({ role, patients, selectedPatient, onSelect, search, setSearch, documents, onUpload, tasks, appointments, onConfirm, onMissed }) { return <section className="patients-layout"><div className="patient-directory"><div className="section-heading"><div><div className="section-kicker">PATIENT RECORDS</div><h2>{role === "Patient" ? "My record" : "Patients"}</h2></div></div><div className="search-box"><Search size={16} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, ID or language" /></div><div className="directory-list">{patients.map((p) => <button key={p.id} className={`directory-row ${p.id === selectedPatient.id ? "selected" : ""}`} onClick={() => onSelect(p.id)}><Avatar initials={p.initials} tone={avatarTone(p.accent)} /><div><strong>{p.name}</strong><span>{p.id} · {p.week} weeks · {p.language}</span></div><StatusPill tone={p.accent}>{p.status}</StatusPill><ArrowRight size={15} /></button>)}</div></div><PatientRecord patient={selectedPatient} documents={documents} onUpload={onUpload} tasks={tasks} appointments={appointments} onConfirm={onConfirm} onMissed={onMissed} /></section>; }
 
-function PatientRecord({ patient, documents, onUpload, tasks, appointments, onConfirm, onMissed }) { const pct = Math.min(100, Math.round(patient.week / 40 * 100)); return <div className="record-panel"><div className="record-header"><div><div className="section-kicker">PATIENT RECORD</div><div className="record-title"><Avatar initials={patient.initials} size="lg" tone={avatarTone(patient.accent)} /><div><h2>{patient.name}</h2><span>{patient.id} · {patient.age} years · {patient.language}</span></div></div></div><StatusPill tone={patient.accent}>{patient.status}</StatusPill></div><div className="record-tabs"><span className="active">Pregnancy</span><span>Documents</span><span>Workflow</span></div><div className="record-grid"><div className="panel inner-panel"><div className="panel-header"><div><div className="section-kicker">PREGNANCY TRACKER</div><h3>{patient.week} weeks</h3></div><StatusPill tone="blue">Illustrative</StatusPill></div><div className="baby-visual"><div className="baby-circle" style={{ transform: `scale(${0.72 + patient.week / 100})` }}><Baby size={58} /></div><div className="baby-info"><strong>Visual growth view</strong><span>Use this as a simple journey visual, not as a clinical measurement.</span><div className="progress-track"><span style={{ width: `${pct}%` }} /></div><small>{pct}% of the demo pregnancy journey</small></div></div></div><div className="panel inner-panel"><div className="panel-header"><div><div className="section-kicker">WORKFLOW SNAPSHOT</div><h3>What is moving</h3></div><StatusPill tone="green">Shared</StatusPill></div><div className="snapshot-list"><div><span>Appointments</span><strong>{appointments.length}</strong></div><div><span>Open tasks</span><strong>{tasks.filter((t) => t.status !== "COMPLETED").length}</strong></div><div><span>Scans / USG</span><strong>{documents.filter((d) => d.type.includes("scan")).length}</strong></div><div><span>Documents</span><strong>{documents.length}</strong></div></div></div></div><DocumentsPanel documents={documents} onUpload={onUpload} /><div className="panel appointment-list"><div className="panel-header"><div><div className="section-kicker">APPOINTMENTS</div><h3>Shared schedule</h3></div><StatusPill tone="blue">{appointments.length}</StatusPill></div>{appointments.length ? appointments.map((apt) => <div className="appointment-row" key={apt.id}><div><strong>{apt.type}</strong><span>{apt.date} · {apt.time}</span></div><StatusPill tone={STATUS_TONE[apt.status] || "neutral"}>{formatStatus(apt.status)}</StatusPill>{apt.status === "SCHEDULED" && <div className="appointment-actions"><button className="small-action" onClick={() => onConfirm(apt.id)}>Confirm</button><button className="small-action" onClick={() => onMissed(apt.id)}>Missed</button></div>}</div>) : <div className="empty-state">No appointments recorded.</div>}</div><div className="record-note"><ShieldCheck size={15} /><span>Demo files are synthetic. In production, document access must be authenticated and role-based.</span></div></div>; }
-
+function PatientRecord({ patient, documents, onUpload, tasks, appointments, onConfirm, onMissed }) {
+  const pct = Math.min(100, Math.round(patient.week / 40 * 100));
+  const size = getBabySize(patient.week);
+  return <div className="record-panel">
+    <div className="record-header"><div><div className="section-kicker">PATIENT RECORD</div><div className="record-title"><Avatar initials={patient.initials} size="lg" tone={avatarTone(patient.accent)} /><div><h2>{patient.name}</h2><span>{patient.id} · {patient.age} years · {patient.language}</span></div></div></div><StatusPill tone={patient.accent}>{patient.status}</StatusPill></div>
+    <div className="record-tabs"><span className="active">Pregnancy</span><span>Documents</span><span>Workflow</span></div>
+    <div className="patient-pregnancy-hero panel inner-panel">
+      <div className="patient-pregnancy-copy"><div className="section-kicker">PREGNANCY TRACKER</div><h2>Week {patient.week}</h2><p>See the pregnancy journey, upcoming care tasks and shared records in one place.</p><div className="trimester-track"><span className={`trimester ${patient.week < 13 ? "active" : ""}`}>1st</span><span className={`trimester ${patient.week >= 13 && patient.week < 28 ? "active" : ""}`}>2nd</span><span className={`trimester ${patient.week >= 28 ? "active" : ""}`}>3rd</span></div></div>
+      <div className="patient-baby-art"><img src={babyIllustration} alt="Illustrative baby growth graphic" /></div>
+      <div className="patient-size-card"><span className="baby-caption">BABY SIZE · ILLUSTRATIVE</span><strong>{size.cue}</strong><p>{size.length}</p><small>{size.note}</small></div>
+    </div>
+    <div className="record-grid">
+      <div className="panel inner-panel"><div className="panel-header"><div><div className="section-kicker">UPCOMING</div><h3>Care journey</h3></div><StatusPill tone="green">{pct}%</StatusPill></div><div className="mini-journey"><div><span className="mini-dot done" /><div><strong>ANC contact</strong><small>Completed</small></div></div><div><span className="mini-dot active" /><div><strong>Investigation</strong><small>Task created</small></div></div><div><span className="mini-dot pending" /><div><strong>Report upload</strong><small>Awaiting document</small></div></div></div></div>
+      <div className="panel inner-panel"><div className="panel-header"><div><div className="section-kicker">RECORD SNAPSHOT</div><h3>Shared across care team</h3></div></div><div className="snapshot-list"><div><span>Appointments</span><strong>{appointments.length}</strong></div><div><span>Open tasks</span><strong>{tasks.filter((t) => t.status !== "COMPLETED").length}</strong></div><div><span>USG / scans</span><strong>{documents.filter((d) => d.type.includes("scan")).length}</strong></div><div><span>Documents</span><strong>{documents.length}</strong></div></div></div>
+    </div>
+    <DocumentsPanel documents={documents} onUpload={onUpload} />
+    <div className="panel appointment-list"><div className="panel-header"><div><div className="section-kicker">APPOINTMENTS</div><h3>Shared schedule</h3></div><StatusPill tone="blue">{appointments.length}</StatusPill></div>{appointments.length ? appointments.map((apt) => <div className="appointment-row" key={apt.id}><div><strong>{apt.type}</strong><span>{apt.date} · {apt.time}</span></div><StatusPill tone={STATUS_TONE[apt.status] || "neutral"}>{formatStatus(apt.status)}</StatusPill>{apt.status === "SCHEDULED" && <div className="appointment-actions"><button className="small-action" onClick={() => onConfirm(apt.id)}>Confirm</button><button className="small-action" onClick={() => onMissed(apt.id)}>Missed</button></div>}</div>) : <div className="empty-state">No appointments recorded.</div>}</div>
+    <div className="record-note"><ShieldCheck size={15} /><span>Demo files are synthetic. In production, document access must be authenticated and role-based.</span></div>
+  </div>;
+}
 function DocumentsPanel({ documents, onUpload }) { return <div className="panel documents-panel"><div className="panel-header"><div><div className="section-kicker">SHARED DOCUMENTS</div><h3>Reports, USGs & scans</h3></div>{onUpload && <label className="upload-button"><Upload size={15} /> Upload<input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx" onChange={onUpload} /></label>}</div><div className="document-list">{documents.length ? documents.map((doc) => <div className="document-row" key={doc.id}><div className="doc-icon"><FileText size={17} /></div><div><strong>{doc.name}</strong><span>{doc.type} · {doc.date} · added by {doc.owner}</span></div><StatusPill tone={doc.type.includes("scan") ? "blue" : "neutral"}>Shared</StatusPill></div>) : <div className="empty-state">No documents yet.</div>}</div></div>; }
 
 function MessagesPage({ messages, patients, selectedPatient, onSelect, language, setLanguage, composer, setComposer, onSend, onOpen }) { const patientMessages = messages.filter((m) => m.patientId === selectedPatient.id); return <section className="messages-layout"><div className="message-inbox panel"><div className="panel-header"><div><div className="section-kicker">COMMUNICATION</div><h2>Messages</h2></div><button className="primary-button" onClick={onOpen}><Languages size={15} /> Translate & voice</button></div><div className="message-patient-list">{patients.map((p) => <button key={p.id} className={p.id === selectedPatient.id ? "selected" : ""} onClick={() => onSelect(p.id)}><Avatar initials={p.initials} tone={avatarTone(p.accent)} /><div><strong>{p.name}</strong><span>{messages.find((m) => m.patientId === p.id)?.text || "No messages yet"}</span></div></button>)}</div></div><div className="message-thread panel"><div className="panel-header"><div><div className="section-kicker">{selectedPatient.language.toUpperCase()}</div><h2>{selectedPatient.name}</h2></div><StatusPill tone="green">Approved workflow</StatusPill></div><div className="thread-list">{patientMessages.length ? patientMessages.map((m) => <div className={`message-bubble ${m.status === "SENT" ? "sent" : ""}`} key={m.id}><span>{m.channel} · {m.status === "SENT" ? "Sent" : "Ready"}</span><p>{m.text}</p></div>) : <div className="empty-state">No messages for this patient yet.</div>}</div><div className="composer"><select value={language} onChange={(e) => setLanguage(e.target.value)}><option>Marathi</option><option>Hindi</option><option>English</option></select><input value={composer} onChange={(e) => setComposer(e.target.value)} placeholder="Approved workflow message…" /><button onClick={() => onSend()} disabled={!composer.trim()}><Send size={16} /></button></div></div></section>; }
