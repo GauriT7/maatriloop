@@ -314,7 +314,13 @@ function App() {
   return (
     <div className={`app-shell role-${meta.tone}`}>
       <aside className="sidebar">
-        <div className="brand"><div className="brand-mark"><Activity size={18} /></div><div><div className="brand-name">MaatriLoop</div><div className="brand-sub">care coordination</div></div></div>
+        <div className="brand"><div className="brand-mark"><Activity size={18} /><div className="brand">
+  <img
+    src="/maatriloop/assets/elara-wordmark.png"
+    alt="Elara"
+    className="elara-logo"
+  />
+</div>
         <div className="workspace-label">WORKSPACE</div>
         <nav className="nav">
           {[["Overview", LayoutDashboard], ["Care timeline", Clock3], ["Care loop", Activity], ["Tasks", ClipboardCheck], ["Patients", UsersRound], ["Messages", MessageCircle]].map(([label, Icon]) => <button key={label} className={`nav-item ${activeNav === label ? "active" : ""}`} onClick={() => navigate(label)}><Icon size={17} /><span>{label}</span>{label === "Tasks" && <span className="nav-count">{openTasks.length}</span>}</button>)}
