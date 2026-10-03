@@ -274,6 +274,10 @@ function App() {
 
               <div className="task-stack">
                 {tasks.map((task) => {
+                  const workflowTask =
+                    task.patient === "Pooja Shaikh"
+                     ? demoTasks.find((item) => item.id === "task-001")
+                     : null;
                   const Icon = task.icon;
                   return (
                     <div className="task-card" key={task.id}>
@@ -281,7 +285,9 @@ function App() {
                       <div className="task-body">
                         <div className="task-topline">
                           <strong>{task.patient}</strong>
-                          <StatusPill tone={task.tone}>{task.status}</StatusPill>
+                          <StatusPill tone={workflowTask?.status === "IN_PROGRESS" ? "green" : task.tone}>
+                            {workflowTask?.status === "IN_PROGRESS" ? "In progress" : task.status}
+                          </StatusPill>
                         </div>
                         <div className="task-title">{task.type}</div>
                         <div className="task-detail">{task.detail}</div>
@@ -290,7 +296,13 @@ function App() {
                         className="small-action"
                         onClick={() => notify(`${task.patient}: action opened`)}
                       >
-                        {task.type === "Appointment missed" ? "Respond" : task.status === "Completed" ? "View" : "Review"}
+                        {workflowTask?.status === "IN_PROGRESS"
+                          ? "Continue"
+                          : task.type === "Appointment missed"
+                           ? "Respond"
+                           : task.status === "Completed"
+                            ? "View"
+                            : "Review"}
                         onClick={() => {
   setDemoTasks((tasks) =>
     tasks.map((task) =>
