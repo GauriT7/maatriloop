@@ -1,37 +1,85 @@
-[README.md](https://github.com/user-attachments/files/32999097/README.md)
-
+[Uploading README.md…]()
 # MaatriLoop
 
-A non-clinical workflow coordination prototype for maternal and newborn care.
+**Close every care loop.**
 
-## Current build
-- Doctor / frontline / patient / admin role switcher
-- Care timeline ("care clock")
-- Operational task queue
-- Patient journey view
-- Communication loop with WhatsApp + IVR/Voice placeholders
-- Sarvam voice-capture interaction mock
+MaatriLoop is a non-clinical maternal-care workflow and coordination prototype. It keeps operational work visible across doctors, frontline workers and patients, while using AI only for communication and workflow capture.
+
+## What this version demonstrates
+
+- Doctor / Frontline / Patient / Admin role workspaces
+- Appointment creation
+- Appointment confirmation
+- Missed appointment → frontline escalation → outcome → reschedule task
+- Care timeline / task state visibility
+- Multilingual communication preview
+- Sarvam voice workflow architecture in demo mode
+- Human-review gate for AI-generated structured workflow events
+- Admin workflow health and audit trail
+- Privacy / data-governance checklist
 - Synthetic demo data only
-- Explicit assistive/non-diagnostic guardrail
 
-## Run locally
+## Important
+
+This is **not production-ready healthcare software**.
+
+The browser demo intentionally does not contain:
+- diagnosis
+- treatment recommendations
+- clinical decision support
+- clinical risk scoring
+- interpretation of medical data
+- autonomous clinical advice
+
+The workflow engine is the source of truth. The AI layer is a supporting service.
+
+## Frontend
 
 ```bash
 npm install
 npm run dev
 ```
 
-## Safety boundary
+For GitHub Pages, keep Vite's repository base path:
 
-MaatriLoop does not diagnose, recommend treatment, score clinical risk, interpret medical data, or make autonomous clinical decisions.
+```js
+base: "/maatriloop/"
+```
 
-The workflow engine remains the source of truth. AI is used only as an assistive language/voice layer around approved workflow information.
+## Sarvam architecture
 
-## Next
-1. Extract workflow state into data objects
-2. Add backend API
-3. Add database/schema + synthetic seed data
-4. Add Sarvam STT/TTS/translation behind backend
-5. Add simulated WhatsApp/IVR event loop
-6. Add escalation state machine
-7. Build demo script + 6–8 slide pitch deck
+Do not expose a Sarvam API key in React/Vite.
+
+Production flow:
+
+```text
+Frontend
+   ↓
+Backend / AI Gateway
+   ↓
+Sarvam STT / Translation / TTS
+   ↓
+Structured workflow event or approved communication
+   ↓
+Human review / workflow engine
+   ↓
+Database
+```
+
+For the hackathon prototype, the UI uses a deterministic demo adapter so the product remains runnable on GitHub Pages without exposing credentials.
+
+## Production data protection checklist
+
+Before real patient data:
+1. Authentication
+2. Server-side RBAC
+3. Server-side secrets
+4. TLS + encryption at rest
+5. Audit logs
+6. Data minimisation
+7. Retention/deletion policy
+8. Vendor/data-processing review
+9. Consent and privacy notices where required
+10. Clinical pathway governance by the participating clinical team
+
+Use synthetic data in the public GitHub demo.
