@@ -1,11 +1,10 @@
-[MaatriLoop-v0.7-README.md](https://github.com/user-attachments/files/33007111/MaatriLoop-v0.7-README.md)
+[MaatriLoop-v0.8-README.md](https://github.com/user-attachments/files/33007279/MaatriLoop-v0.8-README.md)
 # MaatriLoop
 
 **Close every care loop.**
 
 MaatriLoop is a non-clinical maternal-care workflow and coordination layer. It keeps operational tasks visible, owned, communicated and moving between doctors, frontline workers and patients.
 
-## v0.7 — Closed-loop voice escalation + infertility pathway
 
 This version extends the Sarvam integration with two important workflow capabilities:
 
@@ -37,9 +36,7 @@ The prototype uses the browser microphone and Sarvam TTS/STT to demonstrate the 
 
 AI remains constrained to communication and workflow capture. It does not diagnose, recommend treatment, interpret clinical data or make clinical decisions.
 
-### 2. Infertility / reproductive-endocrinology pathway
 
-The same generic workflow engine can now represent a cycle-based infertility work-up:
 
 - Cycle day logged
 - Baseline scan
@@ -133,7 +130,7 @@ VITE_API_BASE_URL=https://<your-backend-domain>
 
 The prototype uses synthetic demo patients. Do not put real patient health information into this repository or into third-party AI APIs until authentication, RBAC, encryption, audit logging, retention/deletion controls, consent/privacy processes and appropriate healthcare data governance are established.
 
-## v0.7 demo sequence
+## v0.8 demo sequence
 
 For the hackathon demo, the intended narrative is:
 
@@ -144,4 +141,3 @@ For the hackathon demo, the intended narrative is:
 5. Record a synthetic patient response.
 6. Sarvam STT transcribes it.
 7. MaatriLoop creates a human-review workflow task.
-8. Open **Care pathways** to show that the same engine also handles a cycle-based infertility work-up with multiple scans, HSG, partner investigation, reports and review.
