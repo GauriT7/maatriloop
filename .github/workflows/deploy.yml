@@ -2,8 +2,7 @@ name: Deploy MaatriLoop
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -35,17 +34,19 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build
+      - name: Build frontend
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
         run: npm run build
 
-      - name: Setup Pages
+      - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload build
+      - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
         with:
           path: "./dist"
 
-      - name: Deploy
-        id: deployment
+      - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
+        id: deployment
