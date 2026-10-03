@@ -332,6 +332,12 @@ function App() {
     <div>
       <div className="section-kicker">FRONTLINE ACTION</div>
       <h3>Pooja Shaikh needs follow-up</h3>
+      {demoTasks.find((task) => task.id === "task-001")?.reason && (
+  <p>
+    <strong>Recorded reason:</strong>{" "}
+    {demoTasks.find((task) => task.id === "task-001")?.reason}
+  </p>
+)}
       <p>
         Appointment was missed. Record the operational reason and move the
         task toward closure.
@@ -356,7 +362,7 @@ function App() {
                 : task
             )
           );
-          notify("Follow-up task completed");
+          notify("Care loop closed — follow-up completed");
         }}
       >
         Mark resolved
@@ -386,8 +392,13 @@ function App() {
           className="small-action"
           onClick={() => {
             setSelectedReason(reason);
-            setReasonOpen(false);
-            notify(`Outcome recorded: ${reason}`);
+            setDemoTasks((tasks) =>
+              tasks.map((task) =>
+                task.id === "task-001"
+                ? { ...task, reason, status: "IN_PROGRESS" }
+                : task
+    )
+  );
           }}
         >
           {reason}
