@@ -295,27 +295,31 @@ function App() {
                         <div className="task-title">{task.type}</div>
                         <div className="task-detail">{task.detail}</div>
                       </div>
+                      
                       <button
-                        className="small-action"
-                        onClick={() => notify(`${task.patient}: action opened`)}
-                      >
-                        {workflowTask?.status === "IN_PROGRESS"
-                          ? "Continue"
-                          : task.type === "Appointment missed"
-                           ? "Respond"
-                           : task.status === "Completed"
-                            ? "View"
-                            : "Review"}
-                        onClick={() => {
-  setDemoTasks((tasks) =>
-    tasks.map((task) =>
-      task.id === "task-001"
-        ? { ...task, status: "IN_PROGRESS" }
-        : task
-    )
-  );
-}}
-                      </button>
+  className="small-action"
+  onClick={() => {
+    if (task.id === "task-001") {
+      setDemoTasks((tasks) =>
+        tasks.map((item) =>
+          item.id === "task-001"
+            ? { ...item, status: "IN_PROGRESS" }
+            : item
+        )
+      );
+    } else {
+      notify(`${task.patient}: action opened`);
+    }
+  }}
+>
+  {workflowTask?.status === "IN_PROGRESS"
+    ? "Continue"
+    : task.type === "Appointment missed"
+      ? "Respond"
+      : task.status === "Completed"
+        ? "View"
+        : "Review"}
+</button>
                     </div>
                   );
                 })}
