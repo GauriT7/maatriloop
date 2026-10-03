@@ -346,3 +346,88 @@ textarea { width: 100%; min-height: 110px; resize: vertical; margin: 12px 0; }
   .topbar .demo-badge { display: none; }
   h1 { font-size: 23px; }
 }
+
+/* v0.3 — live Sarvam interaction states */
+.sarvam-live {
+  border-color: rgba(24, 112, 91, .28);
+  background: rgba(232, 247, 241, .9);
+}
+.voice-orb.recording {
+  box-shadow: 0 0 0 10px rgba(210, 73, 91, .08), 0 0 0 20px rgba(210, 73, 91, .04);
+  animation: voicePulse 1.5s ease-in-out infinite;
+}
+@keyframes voicePulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+.recording-status {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 13px;
+  border: 1px solid rgba(190, 70, 83, .18);
+  background: rgba(255, 244, 245, .95);
+  border-radius: 12px;
+  color: #8e3b48;
+  font-size: 13px;
+  font-weight: 700;
+  margin: 14px 0;
+}
+.recording-status span:last-child {
+  margin-left: auto;
+  color: #8d777a;
+  font-weight: 500;
+}
+.recording-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #c84c5b;
+  box-shadow: 0 0 0 4px rgba(200, 76, 91, .12);
+}
+.error-box {
+  margin: 12px 0;
+  padding: 11px 13px;
+  border: 1px solid rgba(190, 70, 83, .2);
+  border-radius: 10px;
+  background: #fff6f6;
+  color: #8b3845;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.transcript-card {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid rgba(24, 112, 91, .15);
+  border-radius: 12px;
+  background: #f5faf8;
+}
+.transcript-card p {
+  margin: 8px 0 0;
+  color: #263b36;
+  line-height: 1.55;
+  font-weight: 600;
+}
+.voice-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+.stop-recording {
+  margin-top: 14px;
+}
+.demo-voice-button {
+  justify-content: center;
+}
+.translation-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 10px 0 12px;
+}
+.translation-actions button:disabled,
+.voice-actions button:disabled,
+.stop-recording:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
