@@ -115,6 +115,9 @@ function Avatar({ initials, size = "md", tone = "sage" }) {
 }
 
 function App() {
+  const [reasonOpen, setReasonOpen] = useState(false);
+  const [selectedReason, setSelectedReason] = useState("");
+  
   const [demoTasks, setDemoTasks] = useState([
   {
     id: "task-001",
@@ -334,7 +337,7 @@ function App() {
     <div className="workflow-actions">
       <button
         className="small-action"
-        onClick={() => notify("Reason capture opened")}
+        onClick={() => setReasonOpen(true)}
       >
         Record reason
       </button>
@@ -354,6 +357,38 @@ function App() {
       >
         Mark resolved
       </button>
+    </div>
+  </div>
+)}
+              {reasonOpen && (
+  <div className="workflow-action-card">
+    <div>
+      <div className="section-kicker">FOLLOW-UP OUTCOME</div>
+      <h3>Why was the appointment missed?</h3>
+      <p>
+        Select the operational reason recorded by the frontline worker.
+      </p>
+    </div>
+
+    <div className="workflow-actions">
+      {[
+        "Transport unavailable",
+        "Scheduling conflict",
+        "Could not reach patient",
+        "Other",
+      ].map((reason) => (
+        <button
+          key={reason}
+          className="small-action"
+          onClick={() => {
+            setSelectedReason(reason);
+            setReasonOpen(false);
+            notify(`Outcome recorded: ${reason}`);
+          }}
+        >
+          {reason}
+        </button>
+      ))}
     </div>
   </div>
 )}
