@@ -550,6 +550,7 @@ function App() {
     setComposer("");
   }
 }}
+>                   
                     <Send size={16} />
                   </button>
                 </div>
