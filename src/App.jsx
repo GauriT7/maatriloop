@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import babyIllustration from "./baby-illustration.svg";
 import {
-  Activity, ArrowRight, Baby, Bell, CalendarDays, CalendarPlus, Check, ClipboardCheck,
+  Activity, ArrowRight, Bell, CalendarDays, CalendarPlus, Check, ClipboardCheck,
   Clock3, FileText, FolderOpen, Headphones, LayoutDashboard, Languages, ListChecks,
   MessageCircle, Mic, Paperclip, Phone, PhoneCall, Plus, Search, Send, Settings,
   ShieldCheck, Sparkles, Stethoscope, Upload, UserRound, UsersRound, Volume2, X
@@ -48,16 +48,6 @@ const TIMELINES = {
   "MC-1037": [["01 Oct", "ANC contact", "Completed", "done"], ["02 Oct", "Report upload", "Received", "done"], ["03 Oct", "Doctor review", "Due today", "active"], ["07 Oct", "Follow-up", "Scheduled", "pending"]],
   "MC-1029": [["20 Sep", "ANC contact", "Completed", "done"], ["01 Oct", "Follow-up", "Missed", "missed"], ["03 Oct", "Patient contact", "Frontline queue", "active"], ["05 Oct", "Reschedule", "Pending", "pending"]]
 };
-
-const INFERTILITY_STEPS = [
-  { window: "Cycle start", title: "Cycle day logged", detail: "Patient records cycle day 1 so the workflow can anchor date-sensitive tasks.", tone: "green" },
-  { window: "CD 2–3", title: "Baseline scan", detail: "Baseline pelvic / follicular assessment task — timing configured by the care team.", tone: "blue" },
-  { window: "Configured", title: "Baseline investigations", detail: "AMH · FSH/LH · TSH ± prolactin, according to the clinic-approved protocol.", tone: "amber" },
-  { window: "Serial", title: "Follicular monitoring", detail: "Repeat scan visits can be generated as separate tasks across the cycle.", tone: "blue" },
-  { window: "Early follicular", title: "HSG", detail: "Tubal-patency investigation; the exact appointment window is configured by the care team.", tone: "rose" },
-  { window: "Partner", title: "HSA / semen analysis", detail: "Partner investigation is tracked in parallel rather than as a separate workflow.", tone: "amber" },
-  { window: "After reports", title: "Doctor review", detail: "Report received → review task → documented next workflow step.", tone: "green" }
-];
 
 const CALL_SCRIPTS = {
   English: "Hello. This is MaatriLoop calling from your care team. We could not confirm your scheduled appointment. Would you like help with the next appointment slot?",
@@ -121,7 +111,7 @@ function App() {
   const scans = documents.filter((d) => d.type.toLowerCase().includes("usg") || d.type.toLowerCase().includes("scan")).length;
 
   useEffect(() => {
-    const saved = localStorage.getItem("maatriloop-demo-v04");
+    const saved = localStorage.getItem("maatriloop-demo-v07");
     if (!saved) return;
     try {
       const data = JSON.parse(saved);
@@ -134,7 +124,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("maatriloop-demo-v04", JSON.stringify({ patients, tasks, appointments, messages, documents }));
+    localStorage.setItem("maatriloop-demo-v07", JSON.stringify({ patients, tasks, appointments, messages, documents }));
   }, [patients, tasks, appointments, messages, documents]);
 
   const notify = (message) => { setToast(message); window.clearTimeout(window.__mlToast); window.__mlToast = window.setTimeout(() => setToast(""), 2600); };
@@ -278,6 +268,28 @@ function App() {
     await speakApprovedText(text, targetLanguage);
   };
 
+  const startCareLoopDemo = () => {
+    const patient = patients.find((p) => p.id === "MC-1029") || selectedPatient;
+    const now = Date.now();
+    const existingMessage = messages.find((m) => m.patientId === patient.id);
+    const messageId = existingMessage?.id || `msg-${now}`;
+    if (!existingMessage) {
+      setMessages((items) => [{ id: messageId, patient: patient.name, patientId: patient.id, language: patient.language, channel: "WhatsApp", text: "Your scheduled appointment could not be confirmed. Please reply if you need help with a new slot.", status: "SENT", responseStatus: "NO_RESPONSE", escalationStatus: "AI_VOICE_QUEUED" }, ...items]);
+    } else {
+      setMessages((items) => items.map((m) => m.id === messageId ? { ...m, responseStatus: "NO_RESPONSE", escalationStatus: "AI_VOICE_QUEUED" } : m));
+    }
+    setTasks((items) => [
+      { id: `task-${now}`, patient: patient.name, patientId: patient.id, title: "AI voice follow-up", detail: `${patient.language} · no response to approved message`, status: "SCHEDULED", priority: "HIGH", assignee: "Voice AI", due: "Now", channel: "AI Voice", escalation: "VOICE_CALL" },
+      ...items.filter((t) => !(t.patientId === patient.id && t.title === "AI voice follow-up" && t.status !== "COMPLETED"))
+    ]);
+    setCallPatientId(patient.id);
+    setCallResponse("");
+    setSelectedPatientId(patient.id);
+    addAudit(`Demo care loop advanced to AI voice follow-up for ${patient.name}`, "Workflow engine");
+    notify(`Demo loop advanced · AI voice follow-up queued for ${patient.name}`);
+    setModal("ai-call");
+  };
+
   const resetVoice = () => { setVoiceCaptured(false); setVoiceTranscript(""); setVoiceLanguageCode(""); setVoiceEvent(null); setVoiceError(""); };
 
   const uploadDocument = (event) => {
@@ -305,7 +317,7 @@ function App() {
         <div className="brand"><div className="brand-mark"><Activity size={18} /></div><div><div className="brand-name">MaatriLoop</div><div className="brand-sub">care coordination</div></div></div>
         <div className="workspace-label">WORKSPACE</div>
         <nav className="nav">
-          {[["Overview", LayoutDashboard], ["Care timeline", Clock3], ["Care pathways", Stethoscope], ["Tasks", ClipboardCheck], ["Patients", UsersRound], ["Messages", MessageCircle]].map(([label, Icon]) => <button key={label} className={`nav-item ${activeNav === label ? "active" : ""}`} onClick={() => navigate(label)}><Icon size={17} /><span>{label}</span>{label === "Tasks" && <span className="nav-count">{openTasks.length}</span>}</button>)}
+          {[["Overview", LayoutDashboard], ["Care timeline", Clock3], ["Care loop", Activity], ["Tasks", ClipboardCheck], ["Patients", UsersRound], ["Messages", MessageCircle]].map(([label, Icon]) => <button key={label} className={`nav-item ${activeNav === label ? "active" : ""}`} onClick={() => navigate(label)}><Icon size={17} /><span>{label}</span>{label === "Tasks" && <span className="nav-count">{openTasks.length}</span>}</button>)}
         </nav>
         <div className="sidebar-spacer" />
         <div className="ai-card"><Sparkles size={16} /><div><strong>Assistive AI</strong><span>Voice, language & workflow capture — never clinical decisions.</span></div></div>
@@ -334,7 +346,7 @@ function App() {
 
           {activeNav === "Overview" && <Overview role={role} patients={patients} tasks={tasks} appointments={appointments} selectedPatient={selectedPatient} onSelectPatient={setSelectedPatientId} onNavigate={navigate} onCreate={() => setModal("appointment")} onVoice={() => setModal("voice")} />}
           {activeNav === "Care timeline" && <TimelinePage patient={selectedPatient} tasks={patientTasks} appointments={patientAppointments} documents={patientDocs} onSelect={setSelectedPatientId} patients={patients} />}
-          {activeNav === "Care pathways" && <CarePathwaysPage />}
+          {activeNav === "Care loop" && <CareLoopPage patient={selectedPatient} patients={patients} tasks={tasks} messages={messages} onSelect={setSelectedPatientId} onDemo={startCareLoopDemo} onNavigate={navigate} />}
           {activeNav === "Tasks" && <TasksPage role={role} tasks={tasks} selectedPatient={selectedPatient} onSelect={setSelectedPatientId} onReview={(task) => { setSelectedPatientId(task.patientId); notify(`Opened ${task.patient}'s workflow`); }} onRespond={(task) => updateTask(task.id, { status: "IN_PROGRESS" }, `Started follow-up for ${task.patient}`)} onResolve={resolveMissedAppointment} />}
           {activeNav === "Patients" && <PatientsPage role={role} patients={filteredPatients} selectedPatient={selectedPatient} onSelect={setSelectedPatientId} search={search} setSearch={setSearch} documents={patientDocs} onUpload={uploadDocument} tasks={patientTasks} appointments={patientAppointments} onConfirm={confirmAppointment} onMissed={markMissed} />}
           {activeNav === "Messages" && <MessagesPage messages={messages} patients={patients} selectedPatient={selectedPatient} onSelect={setSelectedPatientId} language={language} setLanguage={setLanguage} composer={composer} setComposer={setComposer} onSend={sendMessage} onOpen={() => setModal("message")} onEscalate={triggerVoiceEscalation} />}
@@ -393,18 +405,28 @@ function PregnancyCard({ patient, role = "Patient" }) {
   </div>;
 }
 
-function CarePathwaysPage() {
-  return <section className="page-stack pathway-page">
-    <div className="section-heading"><div><div className="section-kicker">CONFIGURABLE CARE PATHWAYS</div><h2>One workflow engine, multiple journeys</h2><p className="muted-copy">The same task → communication → report → review → escalation engine can support different care pathways.</p></div><StatusPill tone="green">Workflow layer</StatusPill></div>
-    <div className="pathway-cards">
-      <div className="panel pathway-card"><div className="pathway-icon pathway-green"><Baby size={20} /></div><div><div className="section-kicker">MATERNAL & NEWBORN</div><h3>ANC → delivery → postpartum → newborn</h3><p>Appointments, investigations, report receipt, reminders, missed-visit follow-up and handoffs.</p></div><StatusPill tone="green">Active demo</StatusPill></div>
-      <div className="panel pathway-card pathway-featured"><div className="pathway-icon pathway-rose"><Stethoscope size={20} /></div><div><div className="section-kicker">REPRODUCTIVE ENDOCRINOLOGY & INFERTILITY</div><h3>Cycle-based work-up without the spreadsheet chaos</h3><p>Track date-sensitive visits, multiple scans, partner investigations and reports in one shared care clock.</p></div><StatusPill tone="rose">New</StatusPill></div>
-    </div>
-    <div className="panel infertility-panel">
-      <div className="panel-header"><div><div className="section-kicker">INFERTILITY CARE CLOCK · SYNTHETIC DEMO</div><h2>Every cycle-day task stays connected</h2><p className="muted-copy">Example workflow only. Exact timing and investigations are configured by the participating fertility team.</p></div><StatusPill tone="blue">Clinic-configured</StatusPill></div>
-      <div className="infertility-timeline">{INFERTILITY_STEPS.map((step, i) => <div className="infertility-step" key={step.title}><div className={`infertility-dot ${step.tone}`}>{i + 1}</div><div className="infertility-window">{step.window}</div><div className="infertility-copy"><strong>{step.title}</strong><span>{step.detail}</span></div>{i < INFERTILITY_STEPS.length - 1 && <div className="infertility-line" />}</div>)}</div>
-      <div className="infertility-footer"><div><strong>Why this matters</strong><span>Missing one date-sensitive task can stall the whole work-up. MaatriLoop turns each step into a trackable workflow object.</span></div><div className="infertility-example"><span>CARE TEAM CONFIG</span><strong>Cycle day → task window → reminder → response → report → review</strong></div></div>
-    </div>
+function CareLoopPage({ patient, patients, tasks, messages, onSelect, onDemo, onNavigate }) {
+  const patientTasks = tasks.filter((t) => t.patientId === patient.id);
+  const patientMessages = messages.filter((m) => m.patientId === patient.id);
+  const voiceTask = patientTasks.find((t) => t.title === "AI voice follow-up" && t.status !== "COMPLETED");
+  const reviewTask = patientTasks.find((t) => t.title === "Human follow-up review" && t.status !== "COMPLETED");
+  const hasMessage = patientMessages.length > 0;
+  const noResponse = patientMessages.some((m) => m.responseStatus === "NO_RESPONSE");
+  const hasCompleted = patientTasks.some((t) => t.status === "COMPLETED");
+  const steps = [
+    { title: "Workflow task", detail: patientTasks[0]?.title || "Care task created", state: "done", owner: "MaatriLoop" },
+    { title: "Approved message", detail: hasMessage ? "Message sent" : "Awaiting communication", state: hasMessage ? "done" : "next", owner: "Care team" },
+    { title: "Patient response", detail: noResponse ? "No response received" : "Awaiting patient response", state: noResponse ? "attention" : "next", owner: "Patient" },
+    { title: "AI voice follow-up", detail: voiceTask ? "Queued · Sarvam voice + STT" : "Triggered only after no response", state: voiceTask ? "active" : "next", owner: "Voice AI" },
+    { title: "Human review", detail: reviewTask ? "Review task created" : "Created after voice response", state: reviewTask ? "active" : "next", owner: "Frontline" },
+    { title: "Resolution", detail: hasCompleted ? "A workflow task is closed" : "Operational outcome closes the loop", state: hasCompleted ? "done" : "next", owner: "Care team" }
+  ];
+  return <section className="page-stack care-loop-page">
+    <div className="section-heading"><div><div className="section-kicker">THE CORE PRODUCT</div><h2>One care loop, visible to everyone</h2><p className="muted-copy">MaatriLoop connects task creation, patient communication, voice escalation and human follow-up without making clinical decisions.</p></div><StatusPill tone="green">Workflow engine</StatusPill></div>
+    <div className="care-loop-toolbar panel"><PatientSwitcher patients={patients} selected={patient.id} onSelect={onSelect} /><div className="care-loop-actions"><button className="secondary-button" onClick={() => onNavigate("Messages")}><MessageCircle size={15} /> Open messages</button><button className="primary-button" onClick={onDemo}><PhoneCall size={15} /> Run voice escalation demo</button></div></div>
+    <div className="care-loop-hero panel"><div className="care-loop-hero-copy"><div className="section-kicker">LIVE CARE LOOP · SYNTHETIC DATA</div><h2>{patient.name}</h2><p>{patient.week} weeks · {patient.language} · <strong>{patient.status}</strong></p><div className="loop-statement"><span>Task</span><ArrowRight size={14}/><span>Message</span><ArrowRight size={14}/><span>No response</span><ArrowRight size={14}/><span>AI voice</span><ArrowRight size={14}/><span>Human review</span></div></div><div className="loop-callout"><Sparkles size={17}/><div><strong>AI stays in the communication layer</strong><span>It speaks, listens and structures workflow events. A human owns the next care action.</span></div></div></div>
+    <div className="care-loop-steps">{steps.map((step, i) => <div className={`care-step care-step-${step.state}`} key={step.title}><div className="care-step-number">{i + 1}</div><div className="care-step-copy"><span>{step.owner}</span><strong>{step.title}</strong><p>{step.detail}</p></div>{step.state === "done" ? <StatusPill tone="green">Complete</StatusPill> : step.state === "attention" ? <StatusPill tone="rose">Needs response</StatusPill> : step.state === "active" ? <StatusPill tone="blue">Active</StatusPill> : <StatusPill tone="neutral">Next</StatusPill>}</div>)}</div>
+    <div className="care-loop-bottom"><div className="panel"><div className="section-kicker">WHY THIS MATTERS</div><h3>Don't just notify. Close the loop.</h3><p className="muted-copy">The system keeps ownership, status and next action visible across patient, frontline and doctor workspaces.</p></div><div className="panel"><div className="section-kicker">GUARDRAIL</div><h3>Human-controlled workflow</h3><p className="muted-copy">No diagnosis, risk score, treatment recommendation or autonomous clinical decision is generated.</p></div></div>
   </section>;
 }
 
