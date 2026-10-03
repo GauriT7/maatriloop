@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   Activity, ArrowRight, Bell, CalendarDays, CalendarPlus, Check, ChevronDown,
   ClipboardCheck, Clock3, Database, FileText, Headphones, LayoutDashboard,
@@ -6,6 +6,8 @@ import {
   PhoneCall, Plus, RefreshCw, Search, Send, Settings, ShieldCheck, Sparkles,
   Stethoscope, UserRound, UsersRound, Volume2, X
 } from "lucide-react";
+
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 
 /*
  * MaatriLoop v0.2
@@ -252,6 +254,15 @@ function App() {
   const [composer, setComposer] = useState("");
   const [language, setLanguage] = useState("Marathi");
   const [voiceCaptured, setVoiceCaptured] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState("");
+  const [voiceLanguageCode, setVoiceLanguageCode] = useState("");
+  const [voiceEvent, setVoiceEvent] = useState(null);
+  const [voiceProcessing, setVoiceProcessing] = useState(false);
+  const [voiceError, setVoiceError] = useState("");
+  const [translation, setTranslation] = useState("");
+  const [translationProcessing, setTranslationProcessing] = useState(false);
+  const [translationError, setTranslationError] = useState("");
+  const [audioPlaying, setAudioPlaying] = useState(false);
   const [audit, setAudit] = useState([
     { time: "10:42", actor: "Doctor", action: "Opened Asha's care journey" },
     { time: "10:40", actor: "System", action: "Appointment reminder queued" }
@@ -389,10 +400,98 @@ function App() {
     notify("Message queued in demo communication gateway");
   };
 
-  const captureVoice = () => {
-    setVoiceCaptured(true);
-    addAudit("Captured frontline voice update; structured event awaits human review", "Frontline");
-    notify("Voice captured · structured event ready for review");
+  const captureVoice = async ({ audioBlob, language, mode = "codemix" } = {}) => {
+    if (!audioBlob || !API_BASE) {
+      setVoiceCaptured(true);
+      setVoiceTranscript("Asha's appointment was missed because transport was unavailable.");
+      setVoiceLanguageCode("en-IN");
+      setVoiceEvent({ event: "MISSED_APPOINTMENT", reason: "TRANSPORT", patient: "Asha Kulkarni", requires_followup: true });
+      addAudit("Captured demo voice update; structured event awaits human review", "Frontline");
+      notify(API_BASE ? "Voice captured · structured event ready for review" : "Demo mode · add VITE_API_BASE_URL for live Sarvam");
+      return;
+    }
+
+    try {
+      setVoiceProcessing(true);
+      setVoiceError("");
+      const form = new FormData();
+      const ext = audioBlob.type.includes("mp4") || audioBlob.type.includes("aac") ? "m4a" : "webm";
+      form.append("audio", audioBlob, `maatriloop-voice.${ext}`);
+      form.append("language", language || "");
+      form.append("mode", mode);
+
+      const response = await fetch(`${API_BASE}/api/voice/transcribe`, { method: "POST", body: form });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Sarvam STT failed");
+
+      setVoiceCaptured(true);
+      setVoiceTranscript(data.transcript || "");
+      setVoiceLanguageCode(data.languageCode || "");
+      setVoiceEvent(data.workflowEvent || null);
+      addAudit("Sarvam STT captured a frontline voice update; structured event awaits human review", "Frontline");
+      notify("Sarvam STT complete · event ready for human review");
+    } catch (error) {
+      setVoiceError(error.message || "Could not transcribe audio");
+      notify("Voice transcription failed");
+    } finally {
+      setVoiceProcessing(false);
+    }
+  };
+
+  const translateApprovedText = async (text, targetLanguage) => {
+    if (!text?.trim()) return;
+    if (!API_BASE) {
+      setTranslation("Demo translation preview: " + (targetLanguage === "Marathi" ? "नमस्कार, तुमची पुढील भेट १४ ऑक्टोबर रोजी सकाळी १० वाजता आहे." : targetLanguage === "Hindi" ? "नमस्ते, आपकी अगली अपॉइंटमेंट 14 अक्टूबर को सुबह 10 बजे है।" : text));
+      return;
+    }
+    try {
+      setTranslationProcessing(true);
+      setTranslationError("");
+      const response = await fetch(`${API_BASE}/api/communication/translate`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, targetLanguage, sourceLanguage: "English" })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Translation failed");
+      setTranslation(data.translatedText || "");
+      addAudit(`Translated approved workflow text to ${targetLanguage}`, role);
+      notify(`Sarvam translation ready · ${targetLanguage}`);
+    } catch (error) {
+      setTranslationError(error.message || "Translation failed");
+      notify("Translation failed");
+    } finally {
+      setTranslationProcessing(false);
+    }
+  };
+
+  const speakApprovedText = async (text, targetLanguage) => {
+    if (!text?.trim()) return;
+    if (!API_BASE) { notify("Demo mode · deploy the Sarvam gateway for live voice"); return; }
+    try {
+      setAudioPlaying(true);
+      const response = await fetch(`${API_BASE}/api/voice/speak`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, language: targetLanguage, speaker: "shubh", pace: 1 })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Text-to-speech failed");
+      const audio = new Audio(`data:audio/wav;base64,${data.audioBase64}`);
+      audio.onended = () => setAudioPlaying(false);
+      audio.onerror = () => setAudioPlaying(false);
+      await audio.play();
+      addAudit(`Generated ${targetLanguage} voice message with Sarvam TTS`, role);
+    } catch (error) {
+      setAudioPlaying(false);
+      notify(error.message || "Could not play voice message");
+    }
+  };
+
+  const resetVoice = () => {
+    setVoiceCaptured(false);
+    setVoiceTranscript("");
+    setVoiceLanguageCode("");
+    setVoiceEvent(null);
+    setVoiceError("");
   };
 
   const renderRoleContent = () => {
@@ -577,7 +676,7 @@ function App() {
               <span>AI transforms approved workflow information into language, voice and structured tasks. It does not diagnose, recommend treatment or make clinical decisions.</span>
             </div>
           </div>
-          <div className="sarvam-chip"><Sparkles size={15} /> Sarvam gateway · demo mode</div>
+          <div className={`sarvam-chip ${API_BASE ? "sarvam-live" : ""}`}><Sparkles size={15} /> Sarvam {API_BASE ? "gateway · configured" : "gateway · demo mode"}</div>
         </section>
       </main>
 
@@ -588,11 +687,14 @@ function App() {
       {modal === "voice" && (
         <VoiceModal
           captured={voiceCaptured}
+          transcript={voiceTranscript}
+          languageCode={voiceLanguageCode}
+          workflowEvent={voiceEvent}
+          processing={voiceProcessing}
+          error={voiceError}
           onCapture={captureVoice}
-          onClose={() => {
-            setVoiceCaptured(false);
-            setModal(null);
-          }}
+          onReset={resetVoice}
+          onClose={() => { resetVoice(); setModal(null); }}
         />
       )}
 
@@ -604,7 +706,13 @@ function App() {
           composer={composer}
           setComposer={setComposer}
           onSend={() => sendMessage()}
-          onClose={() => setModal(null)}
+          onTranslate={translateApprovedText}
+          translatedText={translation}
+          translationProcessing={translationProcessing}
+          translationError={translationError}
+          onSpeak={speakApprovedText}
+          audioPlaying={audioPlaying}
+          onClose={() => { setTranslation(""); setTranslationError(""); setModal(null); }}
         />
       )}
 
@@ -1116,58 +1224,127 @@ function AppointmentModal({ patients, onClose, onCreate }) {
   );
 }
 
-function VoiceModal({ captured, onCapture, onClose }) {
+function VoiceModal({ captured, transcript, languageCode, workflowEvent, processing, error, onCapture, onReset, onClose }) {
+  const [recording, setRecording] = useState(false);
+  const [recordingError, setRecordingError] = useState("");
+  const [elapsed, setElapsed] = useState(0);
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
+  const timerRef = useRef(null);
+
+  const startRecording = async () => {
+    try {
+      setRecordingError("");
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error("Microphone recording is not available in this browser.");
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/aac"];
+      const mimeType = candidates.find((type) => MediaRecorder.isTypeSupported?.(type)) || "";
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      chunksRef.current = [];
+      recorder.ondataavailable = (event) => { if (event.data?.size) chunksRef.current.push(event.data); };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((track) => track.stop());
+        clearInterval(timerRef.current);
+        setRecording(false);
+        setElapsed(0);
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        await onCapture({ audioBlob: blob, language: "", mode: "codemix" });
+      };
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setRecording(true);
+      setElapsed(0);
+      timerRef.current = window.setInterval(() => setElapsed((value) => value + 1), 1000);
+    } catch (error) {
+      setRecordingError(error.message || "Microphone permission was not available.");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current?.state !== "inactive") mediaRecorderRef.current?.stop();
+  };
+
+  const demoCapture = () => onCapture({});
+
   return (
-    <Modal title="Capture a workflow update" kicker="SARVAM VOICE GATEWAY · DEMO" onClose={onClose}>
-      <div className="voice-orb"><Mic size={28} /></div>
-      <p className="modal-copy">In production, the browser/mobile client would send audio to your backend. The backend calls Sarvam STT, then a constrained structured-event layer converts approved operational language into a workflow event for human review.</p>
-      <div className="voice-pipeline">
-        <span>Voice</span><ArrowRight size={14} /><span>Sarvam STT</span><ArrowRight size={14} /><span>Structured event</span><ArrowRight size={14} /><span>Human review</span>
-      </div>
-      <div className="voice-example"><Headphones size={16} /><span>“Asha's appointment was missed because transport was unavailable.”</span></div>
-      {captured && (
+    <Modal title="Capture a workflow update" kicker="SARVAM VOICE GATEWAY" onClose={onClose}>
+      <div className={`voice-orb ${recording ? "recording" : ""}`}><Mic size={28} /></div>
+      <p className="modal-copy">Record a short frontline update. The browser sends only this audio clip to the MaatriLoop backend; the backend calls Sarvam STT and returns a transcript plus a constrained operational event for human review.</p>
+      <div className="voice-pipeline"><span>Voice</span><ArrowRight size={14} /><span>Sarvam STT</span><ArrowRight size={14} /><span>Structured event</span><ArrowRight size={14} /><span>Human review</span></div>
+
+      {recording && <div className="recording-status"><span className="recording-dot" /> Recording · 00:{String(elapsed).padStart(2, "0")} <span>Tap stop when finished</span></div>}
+      {recordingError && <div className="error-box">{recordingError}</div>}
+      {error && <div className="error-box">{error}</div>}
+
+      <div className="voice-example"><Headphones size={16} /><span>Try: “Asha's appointment was missed because transport was unavailable.”</span></div>
+
+      {transcript && (
+        <div className="transcript-card">
+          <div className="section-kicker">SARVAM TRANSCRIPT {languageCode ? `· ${languageCode}` : ""}</div>
+          <p>“{transcript}”</p>
+        </div>
+      )}
+
+      {captured && workflowEvent && (
         <div className="captured-event">
           <div className="section-kicker">CAPTURED WORKFLOW EVENT</div>
           <h3>Operational update ready for review</h3>
           <div className="event-grid">
-            <span>event</span><strong>MISSED_APPOINTMENT</strong>
-            <span>reason</span><strong>TRANSPORT</strong>
-            <span>requires_followup</span><strong>true</strong>
+            <span>event</span><strong>{workflowEvent.event}</strong>
+            <span>reason</span><strong>{workflowEvent.reason}</strong>
+            <span>patient</span><strong>{workflowEvent.patient || "Needs selection"}</strong>
+            <span>requires_followup</span><strong>{String(workflowEvent.requires_followup)}</strong>
           </div>
           <StatusPill tone="green">Human review required before task update</StatusPill>
         </div>
       )}
-      <button className="primary-button full" onClick={onCapture}><Mic size={17} /> {captured ? "Capture again" : "Start recording (demo)"}</button>
-      <div className="microcopy"><ShieldCheck size={13} /> No API key is exposed in the browser.</div>
+
+      {!recording && (
+        <div className="voice-actions">
+          <button className="primary-button full" onClick={startRecording} disabled={processing}>
+            <Mic size={17} /> {processing ? "Transcribing with Sarvam…" : captured ? "Record another update" : "Start recording"}
+          </button>
+          <button className="secondary-button full" onClick={stopRecording} style={{ display: "none" }}>Stop</button>
+          {!captured && <button className="text-button demo-voice-button" onClick={demoCapture}>Use demo transcript</button>}
+        </div>
+      )}
+      {recording && <button className="primary-button full stop-recording" onClick={stopRecording}><X size={17} /> Stop & transcribe</button>}
+      <div className="microcopy"><ShieldCheck size={13} /> {API_BASE ? "Sarvam API key stays on the backend." : "Live gateway not configured yet · this button currently uses demo mode."}</div>
     </Modal>
   );
 }
 
-function MessageModal({ patient, language, setLanguage, composer, setComposer, onSend, onClose }) {
-  const examples = {
-    Marathi: "नमस्कार, तुमची पुढील भेट १४ ऑक्टोबर रोजी सकाळी १० वाजता आहे.",
-    Hindi: "नमस्ते, आपकी अगली अपॉइंटमेंट 14 अक्टूबर को सुबह 10 बजे है।",
-    English: "Hello, your next appointment is on 14 October at 10:00 AM."
-  };
+function MessageModal({ patient, language, setLanguage, composer, setComposer, onSend, onTranslate, translatedText, translationProcessing, translationError, onSpeak, audioPlaying, onClose }) {
+  const defaultEnglish = "Hello, your next appointment is on 14 October at 10:00 AM.";
+  const textForTranslation = composer.trim() || defaultEnglish;
   return (
     <Modal title={`Message · ${patient.name}`} kicker="APPROVED COMMUNICATION" onClose={onClose}>
       <div className="translation-bar">
         <Languages size={16} />
-        <span>Translation layer</span>
+        <span>Translate approved workflow text</span>
         <select value={language} onChange={(e) => setLanguage(e.target.value)}>
           <option>Marathi</option><option>Hindi</option><option>English</option>
         </select>
       </div>
-      <div className="translation-preview">
-        <div className="section-kicker">PREVIEW</div>
-        <p>{examples[language]}</p>
-      </div>
       <textarea value={composer} onChange={(e) => setComposer(e.target.value)} placeholder="Enter approved workflow text…" />
+      <div className="translation-actions">
+        <button className="secondary-button" onClick={() => onTranslate(textForTranslation, language)} disabled={translationProcessing || language === "English"}>
+          <Languages size={15} /> {translationProcessing ? "Translating…" : "Translate with Sarvam"}
+        </button>
+        {translatedText && <button className="secondary-button" onClick={() => onSpeak(translatedText, language)} disabled={audioPlaying}>
+          <Volume2 size={15} /> {audioPlaying ? "Playing…" : "Play Sarvam voice"}
+        </button>}
+      </div>
+      {translationError && <div className="error-box">{translationError}</div>}
+      <div className="translation-preview">
+        <div className="section-kicker">SARVAM OUTPUT · {language}</div>
+        <p>{translatedText || (language === "English" ? defaultEnglish : "Enter approved English workflow text, then translate it with Sarvam.")}</p>
+      </div>
       <div className="modal-actions">
         <button className="secondary-button" onClick={onClose}>Cancel</button>
         <button className="primary-button" onClick={() => { onSend(); onClose(); }}><Send size={16} /> Queue message</button>
       </div>
-      <div className="microcopy"><ShieldCheck size={13} /> Sarvam should translate approved content, not invent clinical content.</div>
+      <div className="microcopy"><ShieldCheck size={13} /> Sarvam translates approved content; it does not create clinical instructions.</div>
     </Modal>
   );
 }
