@@ -356,20 +356,30 @@ function App() {
       </button>
 
       <button
-        className="small-action primary-action"
-        onClick={() => {
-          setDemoTasks((tasks) =>
-            tasks.map((task) =>
-              task.id === "task-001"
-                ? { ...task, status: "COMPLETED" }
-                : task
-            )
-          );
-          notify("Care loop closed — follow-up completed");
-        }}
-      >
-        Mark resolved
-      </button>
+  className="small-action primary-action"
+  onClick={() => {
+    setDemoTasks((tasks) => [
+      ...tasks.map((task) =>
+        task.id === "task-001"
+          ? { ...task, status: "COMPLETED" }
+          : task
+      ),
+      {
+        id: "task-003",
+        patient: "Pooja Shaikh",
+        title: "Reschedule appointment",
+        status: "PENDING",
+        priority: "NORMAL",
+        assignee: "Frontline",
+      },
+    ]);
+
+    notify("Follow-up completed · Reschedule task created");
+  }}
+>
+  Mark resolved
+</button>
+      
     </div>
   </div>
 )}
