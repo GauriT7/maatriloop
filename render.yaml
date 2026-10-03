@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: maatriloop-sarvam-gateway
+    runtime: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: SARVAM_API_KEY
+        sync: false
+      - key: FRONTEND_ORIGIN
+        value: https://gaurit7.github.io
