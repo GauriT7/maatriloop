@@ -1,85 +1,97 @@
-[Uploading README.md…]()
+[README.md](https://github.com/user-attachments/files/33004970/README.md)
 # MaatriLoop
 
 **Close every care loop.**
 
-MaatriLoop is a non-clinical maternal-care workflow and coordination prototype. It keeps operational work visible across doctors, frontline workers and patients, while using AI only for communication and workflow capture.
+MaatriLoop is a non-clinical maternal-care workflow and coordination layer. It keeps operational tasks visible, owned, communicated and moving between doctors, frontline workers and patients.
 
-## What this version demonstrates
+## v0.3 — Sarvam integration
 
-- Doctor / Frontline / Patient / Admin role workspaces
-- Appointment creation
-- Appointment confirmation
-- Missed appointment → frontline escalation → outcome → reschedule task
-- Care timeline / task state visibility
-- Multilingual communication preview
-- Sarvam voice workflow architecture in demo mode
-- Human-review gate for AI-generated structured workflow events
-- Admin workflow health and audit trail
-- Privacy / data-governance checklist
-- Synthetic demo data only
+This version adds an integration-ready Sarvam gateway for:
 
-## Important
+- **Speech-to-text:** short frontline voice notes → Sarvam Saaras v4 → transcript → deterministic workflow-event extraction → human review.
+- **Translation:** approved workflow text → Sarvam Translate → Marathi/Hindi/English.
+- **Text-to-speech:** approved translated text → Sarvam Bulbul v3 → playable audio.
+- **Code-mixed speech:** the voice flow can use Saaras `codemix` mode for Indian-language + English operational speech.
 
-This is **not production-ready healthcare software**.
+Sarvam is a supporting communication layer. It is **not** the source of truth and does not diagnose, prescribe, recommend treatment, score clinical risk or make clinical decisions.
 
-The browser demo intentionally does not contain:
-- diagnosis
-- treatment recommendations
-- clinical decision support
-- clinical risk scoring
-- interpretation of medical data
-- autonomous clinical advice
+## Architecture
 
-The workflow engine is the source of truth. The AI layer is a supporting service.
+```text
+Doctor / Frontline / Patient
+          ↓
+    MaatriLoop workflow
+          ↓
+ Tasks + appointments + communication
+          ↓
+    Sarvam gateway
+     ↙      ↓      ↘
+   STT   Translate   TTS
+     \      ↓      /
+      Human review
+          ↓
+      Workflow event
+          ↓
+       Audit trail
+```
 
-## Frontend
+## Important security rule
+
+Never put `SARVAM_API_KEY` in `App.jsx`, Vite client code, GitHub Pages, or any browser-exposed variable.
+
+The key belongs only on the backend as `SARVAM_API_KEY`.
+
+The frontend uses only the public `VITE_API_BASE_URL` to reach the backend.
+
+## Local development
+
+### Frontend
 
 ```bash
 npm install
 npm run dev
 ```
 
-For GitHub Pages, keep Vite's repository base path:
-
-```js
-base: "/maatriloop/"
-```
-
-## Sarvam architecture
-
-Do not expose a Sarvam API key in React/Vite.
-
-Production flow:
+Set:
 
 ```text
-Frontend
-   ↓
-Backend / AI Gateway
-   ↓
-Sarvam STT / Translation / TTS
-   ↓
-Structured workflow event or approved communication
-   ↓
-Human review / workflow engine
-   ↓
-Database
+VITE_API_BASE_URL=http://localhost:8787
 ```
 
-For the hackathon prototype, the UI uses a deterministic demo adapter so the product remains runnable on GitHub Pages without exposing credentials.
+### Backend
 
-## Production data protection checklist
+```bash
+cd server
+npm install
+npm start
+```
 
-Before real patient data:
-1. Authentication
-2. Server-side RBAC
-3. Server-side secrets
-4. TLS + encryption at rest
-5. Audit logs
-6. Data minimisation
-7. Retention/deletion policy
-8. Vendor/data-processing review
-9. Consent and privacy notices where required
-10. Clinical pathway governance by the participating clinical team
+Backend environment:
 
-Use synthetic data in the public GitHub demo.
+```text
+SARVAM_API_KEY=your_key
+FRONTEND_ORIGIN=http://localhost:5173
+PORT=8787
+```
+
+## Deploying the backend
+
+The repository includes `render.yaml` for a small Node gateway deployment. After deploying the backend, add:
+
+```text
+SARVAM_API_KEY=<your Sarvam key>
+FRONTEND_ORIGIN=https://gaurit7.github.io
+```
+
+Then set the GitHub Pages build variable:
+
+```text
+VITE_API_BASE_URL=https://<your-backend-domain>
+```
+
+The frontend falls back to a safe demo mode if this variable is absent.
+
+## Synthetic data only
+
+The prototype uses synthetic demo patients. Do not put real patient health information into this repository or into third-party AI APIs until authentication, RBAC, encryption, audit logging, retention/deletion controls, consent/privacy processes and appropriate healthcare data governance are established.
