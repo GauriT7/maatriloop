@@ -118,6 +118,8 @@ function App() {
   const [reasonOpen, setReasonOpen] = useState(false);
   const [selectedReason, setSelectedReason] = useState("");
   const [messageSent, setMessageSent] = useState(false);
+  const [showVoice, setShowVoice] = useState(false);
+  const [voiceCaptured, setVoiceCaptured] = useState(false);
   
   const [demoTasks, setDemoTasks] = useState([
   {
@@ -565,15 +567,39 @@ function App() {
             <button className="modal-close" onClick={() => setShowVoice(false)}><X size={18} /></button>
             <div className="voice-orb"><Mic size={28} /></div>
             <div className="section-kicker">SARVAM VOICE CAPTURE</div>
-            <h2>Record a workflow update</h2>
-            <p>Speak naturally. The demo converts the note into a structured operational event — not a clinical recommendation.</p>
+            <h2>Capture a workflow update</h2>
+            <p>
+              Speak naturally. The demo converts the note into a structured operational 
+              event for human review — not a clinical recommendation.
+            </p>
             <div className="voice-example">
               <Headphones size={16} />
               <span>“Asha's appointment was missed because transport was unavailable.”</span>
             </div>
-            <button className="primary-button full" onClick={() => { setShowVoice(false); notify("Voice capture simulated → task created"); }}>
-              <Mic size={17} /> Start recording
-            </button>
+            {voiceCaptured && (
+  <div className="workflow-action-card">
+    <div className="section-kicker">CAPTURED WORKFLOW EVENT</div>
+    <h3>Operational update recorded</h3>
+    <p>
+      <strong>Transcript:</strong> Asha's appointment was missed because
+      transport was unavailable.
+    </p>
+    <p>
+      <strong>Event:</strong> Appointment follow-up required
+    </p>
+    <StatusPill tone="green">Ready for human review</StatusPill>
+  </div>
+)}
+            <button
+  className="primary-button full"
+  onClick={() => {
+    setVoiceCaptured(true);
+    setShowVoice(false);
+    notify("Voice captured and structured in demo");
+  }}
+>
+  <Mic size={17} /> Start recording
+</button>
           </div>
         </div>
       )}
