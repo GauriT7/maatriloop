@@ -115,6 +115,24 @@ function Avatar({ initials, size = "md", tone = "sage" }) {
 }
 
 function App() {
+  const [demoTasks, setDemoTasks] = useState([
+  {
+    id: "task-001",
+    patient: "Pooja Shaikh",
+    title: "Appointment missed",
+    status: "MISSED",
+    priority: "HIGH",
+    assignee: "Frontline",
+  },
+  {
+    id: "task-002",
+    patient: "Meena Patil",
+    title: "Report received",
+    status: "PENDING",
+    priority: "NORMAL",
+    assignee: "Doctor",
+  },
+]);
   const [role, setRole] = useState("Doctor");
   const [activeNav, setActiveNav] = useState("Overview");
   const [selectedPatient, setSelectedPatient] = useState(patients[0]);
