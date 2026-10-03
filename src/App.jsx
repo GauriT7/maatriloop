@@ -291,6 +291,15 @@ function App() {
                         onClick={() => notify(`${task.patient}: action opened`)}
                       >
                         {task.type === "Appointment missed" ? "Respond" : task.status === "Completed" ? "View" : "Review"}
+                        onClick={() => {
+  setDemoTasks((tasks) =>
+    tasks.map((task) =>
+      task.id === "task-001"
+        ? { ...task, status: "IN_PROGRESS" }
+        : task
+    )
+  );
+}}
                       </button>
                     </div>
                   );
