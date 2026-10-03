@@ -2,9 +2,7 @@
   "name": "maatriloop-gateway",
   "private": true,
   "type": "module",
-  "scripts": {
-    "start": "node index.js"
-  },
+  "scripts": { "start": "node index.js" },
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
