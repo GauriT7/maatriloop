@@ -318,6 +318,46 @@ function App() {
                 })}
               </div>
 
+              {demoTasks.some(
+  (task) => task.id === "task-001" && task.status === "IN_PROGRESS"
+) && (
+  <div className="workflow-action-card">
+    <div>
+      <div className="section-kicker">FRONTLINE ACTION</div>
+      <h3>Pooja Shaikh needs follow-up</h3>
+      <p>
+        Appointment was missed. Record the operational reason and move the
+        task toward closure.
+      </p>
+    </div>
+
+    <div className="workflow-actions">
+      <button
+        className="small-action"
+        onClick={() => notify("Reason capture opened")}
+      >
+        Record reason
+      </button>
+
+      <button
+        className="small-action primary-action"
+        onClick={() => {
+          setDemoTasks((tasks) =>
+            tasks.map((task) =>
+              task.id === "task-001"
+                ? { ...task, status: "COMPLETED" }
+                : task
+            )
+          );
+          notify("Follow-up task completed");
+        }}
+      >
+        Mark resolved
+      </button>
+    </div>
+  </div>
+)}
+              
               <div className="section-heading patient-heading">
                 <div>
                   <div className="section-kicker">PATIENTS</div>
