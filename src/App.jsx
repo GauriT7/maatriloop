@@ -49,6 +49,22 @@ const TIMELINES = {
   "MC-1029": [["20 Sep", "ANC contact", "Completed", "done"], ["01 Oct", "Follow-up", "Missed", "missed"], ["03 Oct", "Patient contact", "Frontline queue", "active"], ["05 Oct", "Reschedule", "Pending", "pending"]]
 };
 
+const INFERTILITY_STEPS = [
+  { window: "Cycle start", title: "Cycle day logged", detail: "Patient records cycle day 1 so the workflow can anchor date-sensitive tasks.", tone: "green" },
+  { window: "CD 2–3", title: "Baseline scan", detail: "Baseline pelvic / follicular assessment task — timing configured by the care team.", tone: "blue" },
+  { window: "Configured", title: "Baseline investigations", detail: "AMH · FSH/LH · TSH ± prolactin, according to the clinic-approved protocol.", tone: "amber" },
+  { window: "Serial", title: "Follicular monitoring", detail: "Repeat scan visits can be generated as separate tasks across the cycle.", tone: "blue" },
+  { window: "Early follicular", title: "HSG", detail: "Tubal-patency investigation; the exact appointment window is configured by the care team.", tone: "rose" },
+  { window: "Partner", title: "HSA / semen analysis", detail: "Partner investigation is tracked in parallel rather than as a separate workflow.", tone: "amber" },
+  { window: "After reports", title: "Doctor review", detail: "Report received → review task → documented next workflow step.", tone: "green" }
+];
+
+const CALL_SCRIPTS = {
+  English: "Hello. This is MaatriLoop calling from your care team. We could not confirm your scheduled appointment. Would you like help with the next appointment slot?",
+  Hindi: "नमस्ते। मैं आपकी केयर टीम की ओर से मातृलूप से बोल रही हूँ। आपकी तय मुलाकात की पुष्टि नहीं हो पाई है। क्या आप अगली अपॉइंटमेंट के लिए मदद चाहेंगी?",
+  Marathi: "नमस्कार. मी तुमच्या केअर टीमच्या वतीने मातृलूपकडून बोलत आहे. तुमच्या ठरलेल्या भेटीची पुष्टी मिळाली नाही. पुढील अपॉइंटमेंटसाठी मदत हवी आहे का?"
+};
+
 const BABY_SIZE = {
   20: { cue: "About the size of a banana", length: "~25 cm", note: "Illustrative average · varies by pregnancy" },
   28: { cue: "About the size of an aubergine", length: "~37.6 cm head-to-heel", note: "Illustrative average · not a scan measurement" },
@@ -79,6 +95,9 @@ function App() {
   const [documents, setDocuments] = useState(INITIAL_DOCS);
   const [toast, setToast] = useState("");
   const [modal, setModal] = useState(null);
+  const [callPatientId, setCallPatientId] = useState(null);
+  const [callResponse, setCallResponse] = useState("");
+  const [callProcessing, setCallProcessing] = useState(false);
   const [search, setSearch] = useState("");
   const [composer, setComposer] = useState("");
   const [language, setLanguage] = useState("Marathi");
@@ -170,11 +189,35 @@ function App() {
   const sendMessage = (text = composer) => {
     if (!text.trim()) return;
     const now = Date.now();
-    setMessages((items) => [{ id: `msg-${now}`, patient: selectedPatient.name, patientId: selectedPatient.id, language, channel: "WhatsApp", text, status: "SENT" }, ...items]);
-    setTasks((items) => [{ id: `task-${now}`, patient: selectedPatient.name, patientId: selectedPatient.id, title: "Patient message sent", detail: `${language} · awaiting response`, status: "SCHEDULED", priority: "NORMAL", assignee: "Patient", due: "Today", channel: "WhatsApp" }, ...items]);
-    addAudit(`Sent ${language} workflow message to ${selectedPatient.name}`);
-    setComposer(""); notify(`Message sent · visible in ${selectedPatient.name}'s workspace`);
+    setMessages((items) => [{ id: `msg-${now}`, patient: selectedPatient.name, patientId: selectedPatient.id, language, channel: "WhatsApp", text, status: "SENT", responseStatus: "AWAITING_RESPONSE" }, ...items]);
+    setTasks((items) => [{ id: `task-${now}`, patient: selectedPatient.name, patientId: selectedPatient.id, title: "Patient message sent", detail: `${language} · awaiting response → voice follow-up if unanswered`, status: "SCHEDULED", priority: "NORMAL", assignee: "Patient", due: "Today", channel: "WhatsApp", escalation: "AI_VOICE" }, ...items]);
+    addAudit(`Sent ${language} workflow message to ${selectedPatient.name}; awaiting response`);
+    setComposer(""); notify(`Message sent · response tracking started`);
   };
+
+  const triggerVoiceEscalation = (messageId) => {
+    const message = messages.find((m) => m.id === messageId);
+    if (!message) return;
+    const now = Date.now();
+    setMessages((items) => items.map((m) => m.id === messageId ? { ...m, responseStatus: "NO_RESPONSE", escalationStatus: "AI_VOICE_QUEUED" } : m));
+    setTasks((items) => [{ id: `task-${now}`, patient: message.patient, patientId: message.patientId, title: "AI voice follow-up", detail: `${message.language} · patient did not respond to message`, status: "SCHEDULED", priority: "HIGH", assignee: "Voice AI", due: "Now", channel: "AI Voice", escalation: "VOICE_CALL" }, ...items]);
+    setCallPatientId(message.patientId);
+    setCallResponse("");
+    setModal("ai-call");
+    addAudit(`No response recorded for ${message.patient}; queued AI voice follow-up`, "Workflow engine");
+  };
+
+  const completeVoiceCall = (transcript = "") => {
+    const patientId = callPatientId || selectedPatient.id;
+    const patient = patients.find((p) => p.id === patientId) || selectedPatient;
+    setCallResponse(transcript);
+    setTasks((items) => items.map((t) => t.patientId === patientId && t.title === "AI voice follow-up" && t.status !== "COMPLETED" ? { ...t, status: "COMPLETED", outcome: transcript || "Response captured", completedAt: new Date().toISOString() } : t));
+    setTasks((items) => [{ id: `task-${Date.now()}`, patient: patient.name, patientId, title: "Human follow-up review", detail: transcript ? "AI voice response captured · human review required" : "AI voice call completed · review outcome", status: "PENDING", priority: "NORMAL", assignee: "Frontline", due: "Today", channel: "Workflow" }, ...items]);
+    setMessages((items) => items.map((m) => m.patientId === patientId && m.responseStatus === "NO_RESPONSE" ? { ...m, escalationStatus: "VOICE_COMPLETED" } : m));
+    addAudit(`AI voice response captured for ${patient.name}; human review task created`, "Voice AI");
+    notify(`Voice response captured · human review task created`);
+  };
+
 
   const captureVoice = async ({ audioBlob } = {}) => {
     if (!audioBlob || !API_BASE) {
@@ -187,7 +230,11 @@ function App() {
       form.append("audio", audioBlob, `maatriloop-voice.${ext}`);
       form.append("language", ""); form.append("mode", "codemix");
       const response = await fetch(`${API_BASE}/api/voice/transcribe`, { method: "POST", body: form });
-      const data = await response.json(); if (!response.ok) throw new Error(data.error || "Sarvam STT failed");
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const detail = data?.details?.message || data?.details?.error || data?.error;
+        throw new Error(detail || `Sarvam STT failed (${response.status})`);
+      }
       setVoiceCaptured(true); setVoiceTranscript(data.transcript || ""); setVoiceLanguageCode(data.languageCode || ""); setVoiceEvent(data.workflowEvent || null); addAudit("Sarvam STT captured a frontline update; event awaits human review", "Frontline"); notify("Sarvam STT complete · review the workflow event");
     } catch (error) { setVoiceError(error.message || "Could not transcribe audio"); notify("Voice transcription failed"); }
     finally { setVoiceProcessing(false); }
@@ -199,7 +246,11 @@ function App() {
     try {
       setTranslationProcessing(true); setTranslationError("");
       const response = await fetch(`${API_BASE}/api/communication/translate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, targetLanguage, sourceLanguage: "English" }) });
-      const data = await response.json(); if (!response.ok) throw new Error(data.error || "Translation failed");
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const detail = data?.details?.message || data?.details?.error || data?.error;
+        throw new Error(detail || `Translation failed (${response.status})`);
+      }
       setTranslation(data.translatedText || ""); addAudit(`Translated approved workflow text to ${targetLanguage}`); notify(`Sarvam translation ready · ${targetLanguage}`);
     } catch (error) { setTranslationError(error.message || "Translation failed"); notify("Translation failed"); }
     finally { setTranslationProcessing(false); }
@@ -209,9 +260,22 @@ function App() {
     if (!text?.trim() || !API_BASE) return notify("Live Sarvam gateway is not configured");
     try {
       setAudioPlaying(true); const response = await fetch(`${API_BASE}/api/voice/speak`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, language: targetLanguage, speaker: "shubh", pace: 1 }) });
-      const data = await response.json(); if (!response.ok) throw new Error(data.error || "Text-to-speech failed");
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const detail = data?.details?.message || data?.details?.error || data?.error;
+        throw new Error(detail || `Text-to-speech failed (${response.status})`);
+      }
+      if (!data.audioBase64) throw new Error("Sarvam returned no audio");
       const audio = new Audio(`data:audio/wav;base64,${data.audioBase64}`); audio.onended = () => setAudioPlaying(false); audio.onerror = () => setAudioPlaying(false); await audio.play(); addAudit(`Played ${targetLanguage} voice message with Sarvam TTS`);
     } catch (error) { setAudioPlaying(false); notify(error.message || "Could not play voice message"); }
+  };
+
+  const speakCallScript = async (patientId) => {
+    const patient = patients.find((p) => p.id === patientId) || selectedPatient;
+    const targetLanguage = patient.language || "English";
+    const text = CALL_SCRIPTS[targetLanguage] || CALL_SCRIPTS.English;
+    if (!API_BASE) { notify("Demo voice call · connect the Sarvam gateway for live audio"); return; }
+    await speakApprovedText(text, targetLanguage);
   };
 
   const resetVoice = () => { setVoiceCaptured(false); setVoiceTranscript(""); setVoiceLanguageCode(""); setVoiceEvent(null); setVoiceError(""); };
@@ -241,7 +305,7 @@ function App() {
         <div className="brand"><div className="brand-mark"><Activity size={18} /></div><div><div className="brand-name">MaatriLoop</div><div className="brand-sub">care coordination</div></div></div>
         <div className="workspace-label">WORKSPACE</div>
         <nav className="nav">
-          {[["Overview", LayoutDashboard], ["Care timeline", Clock3], ["Tasks", ClipboardCheck], ["Patients", UsersRound], ["Messages", MessageCircle]].map(([label, Icon]) => <button key={label} className={`nav-item ${activeNav === label ? "active" : ""}`} onClick={() => navigate(label)}><Icon size={17} /><span>{label}</span>{label === "Tasks" && <span className="nav-count">{openTasks.length}</span>}</button>)}
+          {[["Overview", LayoutDashboard], ["Care timeline", Clock3], ["Care pathways", Stethoscope], ["Tasks", ClipboardCheck], ["Patients", UsersRound], ["Messages", MessageCircle]].map(([label, Icon]) => <button key={label} className={`nav-item ${activeNav === label ? "active" : ""}`} onClick={() => navigate(label)}><Icon size={17} /><span>{label}</span>{label === "Tasks" && <span className="nav-count">{openTasks.length}</span>}</button>)}
         </nav>
         <div className="sidebar-spacer" />
         <div className="ai-card"><Sparkles size={16} /><div><strong>Assistive AI</strong><span>Voice, language & workflow capture — never clinical decisions.</span></div></div>
@@ -270,9 +334,10 @@ function App() {
 
           {activeNav === "Overview" && <Overview role={role} patients={patients} tasks={tasks} appointments={appointments} selectedPatient={selectedPatient} onSelectPatient={setSelectedPatientId} onNavigate={navigate} onCreate={() => setModal("appointment")} onVoice={() => setModal("voice")} />}
           {activeNav === "Care timeline" && <TimelinePage patient={selectedPatient} tasks={patientTasks} appointments={patientAppointments} documents={patientDocs} onSelect={setSelectedPatientId} patients={patients} />}
+          {activeNav === "Care pathways" && <CarePathwaysPage />}
           {activeNav === "Tasks" && <TasksPage role={role} tasks={tasks} selectedPatient={selectedPatient} onSelect={setSelectedPatientId} onReview={(task) => { setSelectedPatientId(task.patientId); notify(`Opened ${task.patient}'s workflow`); }} onRespond={(task) => updateTask(task.id, { status: "IN_PROGRESS" }, `Started follow-up for ${task.patient}`)} onResolve={resolveMissedAppointment} />}
           {activeNav === "Patients" && <PatientsPage role={role} patients={filteredPatients} selectedPatient={selectedPatient} onSelect={setSelectedPatientId} search={search} setSearch={setSearch} documents={patientDocs} onUpload={uploadDocument} tasks={patientTasks} appointments={patientAppointments} onConfirm={confirmAppointment} onMissed={markMissed} />}
-          {activeNav === "Messages" && <MessagesPage messages={messages} patients={patients} selectedPatient={selectedPatient} onSelect={setSelectedPatientId} language={language} setLanguage={setLanguage} composer={composer} setComposer={setComposer} onSend={sendMessage} onOpen={() => setModal("message")} />}
+          {activeNav === "Messages" && <MessagesPage messages={messages} patients={patients} selectedPatient={selectedPatient} onSelect={setSelectedPatientId} language={language} setLanguage={setLanguage} composer={composer} setComposer={setComposer} onSend={sendMessage} onOpen={() => setModal("message")} onEscalate={triggerVoiceEscalation} />}
           {activeNav === "Settings" && <SettingsPage audit={audit} onGovernance={() => setModal("governance")} />}
         </div>
 
@@ -283,6 +348,7 @@ function App() {
       {modal === "voice" && <VoiceModal captured={voiceCaptured} transcript={voiceTranscript} languageCode={voiceLanguageCode} workflowEvent={voiceEvent} processing={voiceProcessing} error={voiceError} onCapture={captureVoice} onClose={() => { resetVoice(); setModal(null); }} />}
       {modal === "message" && <MessageModal patient={selectedPatient} language={language} setLanguage={setLanguage} composer={composer} setComposer={setComposer} onSend={() => sendMessage()} onTranslate={translateApprovedText} translatedText={translation} translationProcessing={translationProcessing} translationError={translationError} onSpeak={speakApprovedText} audioPlaying={audioPlaying} onClose={() => { setTranslation(""); setTranslationError(""); setModal(null); }} />}
       {modal === "governance" && <GovernanceModal audit={audit} onClose={() => setModal(null)} />}
+      {modal === "ai-call" && <AIVoiceCallModal patient={patients.find((p) => p.id === callPatientId) || selectedPatient} callResponse={callResponse} onSpeak={speakCallScript} audioPlaying={audioPlaying} onCapture={async ({ audioBlob }) => { setCallProcessing(true); try { if (!audioBlob || !API_BASE) { completeVoiceCall("Patient confirmed they want help with a new appointment."); return; } const form = new FormData(); const ext = audioBlob.type.includes("mp4") || audioBlob.type.includes("aac") ? "m4a" : "webm"; form.append("audio", audioBlob, `maatriloop-call-response.${ext}`); form.append("language", ""); form.append("mode", "codemix"); form.append("context", "PATIENT_VOICE_CALL"); const response = await fetch(`${API_BASE}/api/voice/transcribe`, { method: "POST", body: form }); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data?.error || `Sarvam STT failed (${response.status})`); completeVoiceCall(data.transcript || "Voice response captured."); } catch (error) { notify(error.message || "Could not capture call response"); } finally { setCallProcessing(false); } }} onClose={() => { setModal(null); setCallPatientId(null); }} />}
       {toast && <div className="toast"><Check size={15} /> {toast}</div>}
     </div>
   );
@@ -327,6 +393,21 @@ function PregnancyCard({ patient, role = "Patient" }) {
   </div>;
 }
 
+function CarePathwaysPage() {
+  return <section className="page-stack pathway-page">
+    <div className="section-heading"><div><div className="section-kicker">CONFIGURABLE CARE PATHWAYS</div><h2>One workflow engine, multiple journeys</h2><p className="muted-copy">The same task → communication → report → review → escalation engine can support different care pathways.</p></div><StatusPill tone="green">Workflow layer</StatusPill></div>
+    <div className="pathway-cards">
+      <div className="panel pathway-card"><div className="pathway-icon pathway-green"><Baby size={20} /></div><div><div className="section-kicker">MATERNAL & NEWBORN</div><h3>ANC → delivery → postpartum → newborn</h3><p>Appointments, investigations, report receipt, reminders, missed-visit follow-up and handoffs.</p></div><StatusPill tone="green">Active demo</StatusPill></div>
+      <div className="panel pathway-card pathway-featured"><div className="pathway-icon pathway-rose"><Stethoscope size={20} /></div><div><div className="section-kicker">REPRODUCTIVE ENDOCRINOLOGY & INFERTILITY</div><h3>Cycle-based work-up without the spreadsheet chaos</h3><p>Track date-sensitive visits, multiple scans, partner investigations and reports in one shared care clock.</p></div><StatusPill tone="rose">New</StatusPill></div>
+    </div>
+    <div className="panel infertility-panel">
+      <div className="panel-header"><div><div className="section-kicker">INFERTILITY CARE CLOCK · SYNTHETIC DEMO</div><h2>Every cycle-day task stays connected</h2><p className="muted-copy">Example workflow only. Exact timing and investigations are configured by the participating fertility team.</p></div><StatusPill tone="blue">Clinic-configured</StatusPill></div>
+      <div className="infertility-timeline">{INFERTILITY_STEPS.map((step, i) => <div className="infertility-step" key={step.title}><div className={`infertility-dot ${step.tone}`}>{i + 1}</div><div className="infertility-window">{step.window}</div><div className="infertility-copy"><strong>{step.title}</strong><span>{step.detail}</span></div>{i < INFERTILITY_STEPS.length - 1 && <div className="infertility-line" />}</div>)}</div>
+      <div className="infertility-footer"><div><strong>Why this matters</strong><span>Missing one date-sensitive task can stall the whole work-up. MaatriLoop turns each step into a trackable workflow object.</span></div><div className="infertility-example"><span>CARE TEAM CONFIG</span><strong>Cycle day → task window → reminder → response → report → review</strong></div></div>
+    </div>
+  </section>;
+}
+
 function TimelinePage({ patient, tasks, appointments, documents, patients, onSelect }) { const timeline = TIMELINES[patient.id] || []; return <section className="page-stack"><PatientSwitcher patients={patients} selected={patient.id} onSelect={onSelect} /><div className="timeline-layout"><div className="panel"><div className="panel-header"><div><div className="section-kicker">CARE CLOCK</div><h2>{patient.name}'s journey</h2></div><StatusPill tone={patient.accent}>{patient.status}</StatusPill></div><div className="large-timeline">{timeline.map((item, i) => <div className="large-timeline-item" key={item[0] + item[1]}><div className={`timeline-dot ${item[3]}`} /><div className="timeline-date">{item[0]}</div><div><strong>{item[1]}</strong><span>{item[2]}</span></div>{i < timeline.length - 1 && <div className="timeline-connector" />}</div>)}</div></div><div className="side-stack"><div className="panel"><div className="section-kicker">NEXT</div><h3>{tasks[0]?.title || "Nothing requiring action"}</h3><p className="muted-copy">{tasks[0]?.detail || "The care team has no open task for this patient."}</p></div><DocumentsPanel documents={documents} /></div></div></section>; }
 
 function PatientSwitcher({ patients, selected, onSelect }) { return <div className="patient-switcher"><span>Patient record</span><select value={selected} onChange={(e) => onSelect(e.target.value)}>{patients.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.id}</option>)}</select></div>; }
@@ -357,7 +438,17 @@ function PatientRecord({ patient, documents, onUpload, tasks, appointments, onCo
 }
 function DocumentsPanel({ documents, onUpload }) { return <div className="panel documents-panel"><div className="panel-header"><div><div className="section-kicker">SHARED DOCUMENTS</div><h3>Reports, USGs & scans</h3></div>{onUpload && <label className="upload-button"><Upload size={15} /> Upload<input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx" onChange={onUpload} /></label>}</div><div className="document-list">{documents.length ? documents.map((doc) => <div className="document-row" key={doc.id}><div className="doc-icon"><FileText size={17} /></div><div><strong>{doc.name}</strong><span>{doc.type} · {doc.date} · added by {doc.owner}</span></div><StatusPill tone={doc.type.includes("scan") ? "blue" : "neutral"}>Shared</StatusPill></div>) : <div className="empty-state">No documents yet.</div>}</div></div>; }
 
-function MessagesPage({ messages, patients, selectedPatient, onSelect, language, setLanguage, composer, setComposer, onSend, onOpen }) { const patientMessages = messages.filter((m) => m.patientId === selectedPatient.id); return <section className="messages-layout"><div className="message-inbox panel"><div className="panel-header"><div><div className="section-kicker">COMMUNICATION</div><h2>Messages</h2></div><button className="primary-button" onClick={onOpen}><Languages size={15} /> Translate & voice</button></div><div className="message-patient-list">{patients.map((p) => <button key={p.id} className={p.id === selectedPatient.id ? "selected" : ""} onClick={() => onSelect(p.id)}><Avatar initials={p.initials} tone={avatarTone(p.accent)} /><div><strong>{p.name}</strong><span>{messages.find((m) => m.patientId === p.id)?.text || "No messages yet"}</span></div></button>)}</div></div><div className="message-thread panel"><div className="panel-header"><div><div className="section-kicker">{selectedPatient.language.toUpperCase()}</div><h2>{selectedPatient.name}</h2></div><StatusPill tone="green">Approved workflow</StatusPill></div><div className="thread-list">{patientMessages.length ? patientMessages.map((m) => <div className={`message-bubble ${m.status === "SENT" ? "sent" : ""}`} key={m.id}><span>{m.channel} · {m.status === "SENT" ? "Sent" : "Ready"}</span><p>{m.text}</p></div>) : <div className="empty-state">No messages for this patient yet.</div>}</div><div className="composer"><select value={language} onChange={(e) => setLanguage(e.target.value)}><option>Marathi</option><option>Hindi</option><option>English</option></select><input value={composer} onChange={(e) => setComposer(e.target.value)} placeholder="Approved workflow message…" /><button onClick={() => onSend()} disabled={!composer.trim()}><Send size={16} /></button></div></div></section>; }
+function MessagesPage({ messages, patients, selectedPatient, onSelect, language, setLanguage, composer, setComposer, onSend, onOpen, onEscalate }) {
+  const patientMessages = messages.filter((m) => m.patientId === selectedPatient.id);
+  return <section className="messages-layout">
+    <div className="message-inbox panel"><div className="panel-header"><div><div className="section-kicker">COMMUNICATION LOOP</div><h2>Messages</h2></div><button className="primary-button" onClick={onOpen}><Languages size={15} /> Translate & voice</button></div><div className="message-patient-list">{patients.map((p) => <button key={p.id} className={p.id === selectedPatient.id ? "selected" : ""} onClick={() => onSelect(p.id)}><Avatar initials={p.initials} tone={avatarTone(p.accent)} /><div><strong>{p.name}</strong><span>{messages.find((m) => m.patientId === p.id)?.text || "No messages yet"}</span></div></button>)}</div></div>
+    <div className="message-thread panel"><div className="panel-header"><div><div className="section-kicker">{selectedPatient.language.toUpperCase()}</div><h2>{selectedPatient.name}</h2></div><StatusPill tone="green">Human-approved</StatusPill></div>
+      <div className="communication-loop-card"><div className="section-kicker">AUTOMATED FOLLOW-UP</div><div className="communication-flow"><span className="flow-active">Message</span><ArrowRight size={13} /><span>Response</span><ArrowRight size={13} /><span>AI voice call</span><ArrowRight size={13} /><span>Human review</span></div><small>If the patient does not respond, the workflow can queue an AI voice follow-up. The call uses approved workflow language and captures the response for human review.</small></div>
+      <div className="thread-list">{patientMessages.length ? patientMessages.map((m) => <div className={`message-bubble ${m.status === "SENT" ? "sent" : ""}`} key={m.id}><span>{m.channel} · {m.status === "SENT" ? "Sent" : "Ready"}{m.responseStatus === "AWAITING_RESPONSE" ? " · Awaiting response" : m.responseStatus === "NO_RESPONSE" ? " · No response" : ""}</span><p>{m.text}</p>{m.responseStatus === "AWAITING_RESPONSE" && <button className="small-action message-escalate" onClick={() => onEscalate(m.id)}><PhoneCall size={14} /> No response → AI call</button>}{m.responseStatus === "NO_RESPONSE" && <StatusPill tone="rose">Voice follow-up queued</StatusPill>}{m.escalationStatus === "VOICE_COMPLETED" && <StatusPill tone="green">Voice response captured</StatusPill>}</div>) : <div className="empty-state">No messages for this patient yet.</div>}</div>
+      <div className="composer"><select value={language} onChange={(e) => setLanguage(e.target.value)}><option>Marathi</option><option>Hindi</option><option>English</option></select><input value={composer} onChange={(e) => setComposer(e.target.value)} placeholder="Approved workflow message…" /><button onClick={() => onSend()} disabled={!composer.trim()}><Send size={16} /></button></div>
+    </div>
+  </section>;
+}
 
 function SettingsPage({ audit, onGovernance }) { return <section className="settings-layout"><div className="panel"><div className="section-kicker">SETTINGS & GOVERNANCE</div><h2>Human-controlled by design</h2><p className="muted-copy">The workflow engine is the source of truth. Sarvam is used only for language, voice and structured operational capture.</p><div className="settings-list"><div><ShieldCheck size={17} /><span><strong>Synthetic data</strong><small>Enabled for this prototype</small></span><StatusPill tone="green">On</StatusPill></div><div><Stethoscope size={17} /><span><strong>Clinical decision support</strong><small>Not part of this prototype</small></span><StatusPill tone="blue">Disabled</StatusPill></div><div><Sparkles size={17} /><span><strong>Sarvam gateway</strong><small>API key remains server-side</small></span><StatusPill tone={API_BASE ? "green" : "amber"}>{API_BASE ? "Live" : "Demo"}</StatusPill></div></div><button className="secondary-button" onClick={onGovernance}><ShieldCheck size={15} /> View security checklist</button></div><div className="panel"><div className="section-kicker">RECENT AUDIT</div><h3>Workflow events</h3><div className="audit-list">{audit.slice(0, 8).map((x, i) => <div className="audit-row" key={i}><span>{x.time}</span><div><strong>{x.actor}</strong><p>{x.action}</p></div></div>)}</div></div></section>; }
 
@@ -366,6 +457,41 @@ function AppointmentModal({ patients, onClose, onCreate }) { const [patientId, s
 function VoiceModal({ captured, transcript, languageCode, workflowEvent, processing, error, onCapture, onClose }) { const [recording, setRecording] = useState(false); const [recordingError, setRecordingError] = useState(""); const [elapsed, setElapsed] = useState(0); const mediaRecorderRef = useRef(null); const chunksRef = useRef([]); const timerRef = useRef(null); const startRecording = async () => { try { setRecordingError(""); if (!navigator.mediaDevices?.getUserMedia) throw new Error("Microphone recording is not available in this browser."); const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/aac"]; const mimeType = candidates.find((type) => MediaRecorder.isTypeSupported?.(type)) || ""; const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined); chunksRef.current = []; recorder.ondataavailable = (e) => { if (e.data?.size) chunksRef.current.push(e.data); }; recorder.onstop = async () => { stream.getTracks().forEach((t) => t.stop()); clearInterval(timerRef.current); setRecording(false); setElapsed(0); const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" }); await onCapture({ audioBlob: blob }); }; recorder.start(); mediaRecorderRef.current = recorder; setRecording(true); timerRef.current = window.setInterval(() => setElapsed((v) => v + 1), 1000); } catch (e) { setRecordingError(e.message || "Microphone permission unavailable."); } }; const stop = () => { if (mediaRecorderRef.current?.state !== "inactive") mediaRecorderRef.current.stop(); }; return <Modal title="Capture workflow update" kicker="SARVAM VOICE" onClose={onClose}><div className={`voice-orb ${recording ? "recording" : ""}`}><Mic size={28} /></div><p className="modal-copy">Record a short operational update. Sarvam converts speech to text; MaatriLoop extracts a constrained workflow event for human review.</p><div className="voice-pipeline"><span>Voice</span><ArrowRight size={13} /><span>STT</span><ArrowRight size={13} /><span>Event</span><ArrowRight size={13} /><span>Human review</span></div>{recording && <div className="recording-status"><span className="recording-dot" /> Recording · 00:{String(elapsed).padStart(2, "0")}</div>}{recordingError && <div className="error-box">{recordingError}</div>}{error && <div className="error-box">{error}</div>}<div className="voice-example"><Headphones size={15} /> Try: “Asha's appointment was missed because transport was unavailable.”</div>{transcript && <div className="transcript-card"><div className="section-kicker">SARVAM TRANSCRIPT {languageCode ? `· ${languageCode}` : ""}</div><p>“{transcript}”</p></div>}{captured && workflowEvent && <div className="captured-event"><div className="section-kicker">EVENT FOR HUMAN REVIEW</div><div className="event-grid"><span>event</span><strong>{workflowEvent.event}</strong><span>reason</span><strong>{workflowEvent.reason}</strong><span>patient</span><strong>{workflowEvent.patient || "Needs selection"}</strong></div><StatusPill tone="green">Review before task update</StatusPill></div>}{!recording ? <button className="primary-button full" onClick={startRecording} disabled={processing}><Mic size={17} /> {processing ? "Transcribing…" : captured ? "Record again" : "Start recording"}</button> : <button className="primary-button full stop-recording" onClick={stop}><X size={17} /> Stop & transcribe</button>}<div className="microcopy"><ShieldCheck size={13} /> API key stays on the backend.</div></Modal>; }
 
 function MessageModal({ patient, language, setLanguage, composer, setComposer, onSend, onTranslate, translatedText, translationProcessing, translationError, onSpeak, audioPlaying, onClose }) { const defaultEnglish = "Hello, your next appointment is on 14 October at 10:00 AM."; const source = composer.trim() || defaultEnglish; return <Modal title={`Message · ${patient.name}`} kicker="APPROVED COMMUNICATION" onClose={onClose}><div className="translation-bar"><Languages size={15} /><span>Translate approved text</span><select value={language} onChange={(e) => setLanguage(e.target.value)}><option>Marathi</option><option>Hindi</option><option>English</option></select></div><textarea value={composer} onChange={(e) => setComposer(e.target.value)} placeholder="Approved workflow text…" /><div className="translation-actions"><button className="secondary-button" onClick={() => onTranslate(source, language)} disabled={translationProcessing || language === "English"}><Languages size={15} /> {translationProcessing ? "Translating…" : "Translate with Sarvam"}</button>{translatedText && <button className="secondary-button" onClick={() => onSpeak(translatedText, language)} disabled={audioPlaying}><Volume2 size={15} /> {audioPlaying ? "Playing…" : "Play voice"}</button>}</div>{translationError && <div className="error-box">{translationError}</div>}<div className="translation-preview"><div className="section-kicker">SARVAM OUTPUT · {language}</div><p>{translatedText || (language === "English" ? defaultEnglish : "Translate the approved message to preview it here.")}</p></div><div className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" onClick={() => { onSend(); onClose(); }}><Send size={15} /> Queue message</button></div></Modal>; }
+
+function AIVoiceCallModal({ patient, callResponse, onSpeak, audioPlaying, onCapture, onClose }) {
+  const [recording, setRecording] = useState(false);
+  const [recordingError, setRecordingError] = useState("");
+  const [elapsed, setElapsed] = useState(0);
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
+  const timerRef = useRef(null);
+  const startRecording = async () => {
+    try {
+      setRecordingError("");
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error("Microphone recording is not available in this browser.");
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/aac"];
+      const mimeType = candidates.find((type) => MediaRecorder.isTypeSupported?.(type)) || "";
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      chunksRef.current = [];
+      recorder.ondataavailable = (e) => { if (e.data?.size) chunksRef.current.push(e.data); };
+      recorder.onstop = async () => { stream.getTracks().forEach((t) => t.stop()); clearInterval(timerRef.current); setRecording(false); setElapsed(0); const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" }); await onCapture({ audioBlob: blob }); };
+      recorder.start(); mediaRecorderRef.current = recorder; setRecording(true); timerRef.current = window.setInterval(() => setElapsed((v) => v + 1), 1000);
+    } catch (e) { setRecordingError(e.message || "Microphone permission unavailable."); }
+  };
+  const stop = () => { if (mediaRecorderRef.current?.state !== "inactive") mediaRecorderRef.current.stop(); };
+  const script = CALL_SCRIPTS[patient.language] || CALL_SCRIPTS.English;
+  return <Modal title={`AI voice follow-up · ${patient.name}`} kicker="NO RESPONSE → VOICE" onClose={onClose} wide>
+    <div className="ai-call-banner"><div className={`voice-orb ${recording ? "recording" : ""}`}><PhoneCall size={25} /></div><div><strong>Human-approved voice workflow</strong><p>Message unanswered → AI voice call → patient response → human review.</p></div><StatusPill tone="amber">Demo call</StatusPill></div>
+    <div className="call-steps"><div className="done"><Check size={14} /> Message unanswered</div><div className="active"><Volume2 size={14} /> AI speaks</div><div><Mic size={14} /> Patient responds</div><div><ShieldCheck size={14} /> Human review</div></div>
+    <div className="call-script"><div className="section-kicker">APPROVED CALL SCRIPT · {patient.language}</div><p>{script}</p><button className="secondary-button" onClick={() => onSpeak(patient.id)} disabled={audioPlaying}><Volume2 size={15} /> {audioPlaying ? "Playing Sarvam voice…" : "Play AI voice"}</button></div>
+    {recording && <div className="recording-status"><span className="recording-dot" /> Listening · 00:{String(elapsed).padStart(2, "0")}</div>}
+    {recordingError && <div className="error-box">{recordingError}</div>}
+    {callResponse && <div className="transcript-card"><div className="section-kicker">PATIENT RESPONSE · SARVAM STT</div><p>“{callResponse}”</p></div>}
+    {!recording ? <button className="primary-button full" onClick={startRecording}><Mic size={17} /> Record patient response</button> : <button className="primary-button full stop-recording" onClick={stop}><X size={17} /> Stop & understand response</button>}
+    <div className="microcopy"><ShieldCheck size={13} /> AI is limited to approved communication and workflow capture. It does not make clinical decisions.</div>
+  </Modal>;
+}
 
 function GovernanceModal({ audit, onClose }) { return <Modal title="Security & data protection" kicker="PRODUCTION READINESS" onClose={onClose} wide><div className="security-grid">{[["Authentication", "Use a real identity provider; the demo role switcher is not authorization."], ["RBAC", "Enforce doctor/frontline/patient/admin permissions server-side."], ["Secrets", "SARVAM_API_KEY stays in server environment secrets."], ["Data minimization", "Send only approved workflow content to AI services."], ["Auditability", "Record who creates, changes and closes workflow events."], ["Synthetic demo", "Keep real patient data out of this hackathon prototype."]].map(([title, copy]) => <div className="security-item" key={title}><ShieldCheck size={17} /><div><strong>{title}</strong><p>{copy}</p></div></div>)}</div><div className="audit-preview">{audit.slice(0, 5).map((x, i) => <div key={i}><span>{x.time}</span><strong>{x.actor}</strong><p>{x.action}</p></div>)}</div></Modal>; }
 
