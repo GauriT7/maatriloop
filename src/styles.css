@@ -97,3 +97,9 @@ h3{font-size:16px}
 .care-loop-bottom h3{margin:5px 0 5px;font-size:16px}
 @media(max-width:1050px){.care-loop-hero{grid-template-columns:1fr}.care-loop-steps{grid-template-columns:1fr 1fr}}
 @media(max-width:760px){.care-loop-toolbar{align-items:stretch;flex-direction:column}.care-loop-actions{justify-content:stretch}.care-loop-actions button{flex:1}.care-loop-steps,.care-loop-bottom{grid-template-columns:1fr}.care-loop-hero{padding:18px}.loop-statement{line-height:1.6}}
+.elara-logo {
+  width: 108px;
+  height: auto;
+  display: block;
+  object-fit: contain;
+}
