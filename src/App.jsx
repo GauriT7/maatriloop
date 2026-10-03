@@ -299,7 +299,7 @@ function App() {
                       <button
   className="small-action"
   onClick={() => {
-    if (task.id === "task-001") {
+    if (task.patient === "Pooja Shaikh") {
       setDemoTasks((tasks) =>
         tasks.map((item) =>
           item.id === "task-001"
