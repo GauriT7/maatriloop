@@ -143,7 +143,6 @@ function App() {
   const [activeNav, setActiveNav] = useState("Overview");
   const [selectedPatient, setSelectedPatient] = useState(patients[0]);
   const [composer, setComposer] = useState("");
-  const [showVoice, setShowVoice] = useState(false);
   const [toast, setToast] = useState("");
 
   const roleLabel = useMemo(() => {
